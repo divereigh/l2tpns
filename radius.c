@@ -1,6 +1,6 @@
 // L2TPNS Radius Stuff
 
-char const *cvs_id_radius = "$Id: radius.c,v 1.49.2.2 2006/08/02 14:17:20 bodea Exp $";
+char const *cvs_id_radius = "$Id: radius.c,v 1.56 2009/12/08 14:49:28 bodea Exp $";
 
 #include <time.h>
 #include <stdio.h>
@@ -45,6 +45,25 @@ static void calc_auth(const void *buf, size_t len, const uint8_t *in, uint8_t *o
 void initrad(void)
 {
 	int i;
+	uint16_t port = 0;
+	uint16_t min = config->radius_bind_min;
+	uint16_t max = config->radius_bind_max;
+	int inc = 1;
+	struct sockaddr_in addr;
+
+	if (min)
+	{
+		port = min;
+		if (!max)
+			max = ~0 - 1;
+	}
+	else if (max) /* no minimum specified, bind from max down */
+	{
+		port = max;
+		min = 1;
+		inc = -1;
+	}
+
 	LOG(3, 0, 0, "Creating %d sockets for RADIUS queries\n", RADIUS_FDS);
 	radfds = calloc(sizeof(int), RADIUS_FDS);
 	for (i = 0; i < RADIUS_FDS; i++)
@@ -53,6 +72,27 @@ void initrad(void)
 		radfds[i] = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		flags = fcntl(radfds[i], F_GETFL, 0);
 		fcntl(radfds[i], F_SETFL, flags | O_NONBLOCK);
+
+		if (port)
+		{
+			int b;
+
+			memset(&addr, 0, sizeof(addr));
+			addr.sin_family = AF_INET;
+			addr.sin_addr.s_addr = INADDR_ANY;
+
+			do {
+				addr.sin_port = htons(port);
+				if ((b = bind(radfds[i], (struct sockaddr *) &addr, sizeof(addr))) < 0)
+				{
+					if ((port += inc) < min || port > max)
+					{
+						LOG(0, 0, 0, "Can't bind RADIUS socket in range %u-%u\n", min, max);
+						exit(1);
+					}
+				}
+			} while (b < 0);
+		}
 	}
 }
 
@@ -137,7 +177,7 @@ void radiussend(uint16_t r, uint8_t state)
 		return;
 	}
 
-	if (state != RADIUSAUTH && !config->radius_accounting)
+	if (state != RADIUSAUTH && state != RADIUSJUSTAUTH && !config->radius_accounting)
 	{
 		// Radius accounting is turned off
 		radiusclear(r, s);
@@ -157,7 +197,7 @@ void radiussend(uint16_t r, uint8_t state)
 	{
 		if (s)
 		{
-			if (state == RADIUSAUTH)
+			if (state == RADIUSAUTH || state == RADIUSJUSTAUTH)
 				sessionshutdown(s, "RADIUS timeout.", CDN_ADMIN_DISC, TERM_REAUTHENTICATION_FAILURE);
 			else
 			{
@@ -179,6 +219,7 @@ void radiussend(uint16_t r, uint8_t state)
 	switch (state)
 	{
 		case RADIUSAUTH:
+		case RADIUSJUSTAUTH:
 			b[0] = AccessRequest;               // access request
 			break;
 		case RADIUSSTART:
@@ -199,7 +240,7 @@ void radiussend(uint16_t r, uint8_t state)
 		strcpy((char *) p + 2, session[s].user);
 		p += p[1];
 	}
-	if (state == RADIUSAUTH)
+	if (state == RADIUSAUTH || state == RADIUSJUSTAUTH)
 	{
 		if (radius[r].chap)
 		{
@@ -330,6 +371,7 @@ void radiussend(uint16_t r, uint8_t state)
 			}
 		}
 	}
+
 	if (s)
 	{
 		*p = 5;		// NAS-Port
@@ -339,59 +381,80 @@ void radiussend(uint16_t r, uint8_t state)
 
 	        *p = 6;		// Service-Type
 		p[1] = 6;
-		*(uint32_t *) (p + 2) = htonl(2); // Framed-User
+		*(uint32_t *) (p + 2) = htonl((state == RADIUSJUSTAUTH ? 8 : 2)); // Authenticate only or Framed-User respectevily
 		p += p[1];
 		   
 	        *p = 7;		// Framed-Protocol
-		p[1] = 6;
-		*(uint32_t *) (p + 2) = htonl(1); // PPP
+		p[1] = htonl((state == RADIUSJUSTAUTH ? 0 : 6));
+		*(uint32_t *) (p + 2) = htonl((state == RADIUSJUSTAUTH ? 0 : 1)); // PPP
 		p += p[1];
-	}
-	if (s && session[s].ip)
-	{
-		*p = 8;			// Framed-IP-Address
-		p[1] = 6;
-		*(uint32_t *) (p + 2) = htonl(session[s].ip);
-		p += p[1];
-	}
-	if (s && session[s].route[0].ip)
-	{
-		int r;
-		for (r = 0; s && r < MAXROUTE && session[s].route[r].ip; r++)
+
+		if (session[s].ip)
 		{
-		    	int width = 32;
-			if (session[s].route[r].mask)
+			*p = 8;			// Framed-IP-Address
+			p[1] = 6;
+			*(uint32_t *) (p + 2) = htonl(session[s].ip);
+			p += p[1];
+		}
+
+		if (session[s].route[0].ip)
+		{
+			int r;
+			for (r = 0; s && r < MAXROUTE && session[s].route[r].ip; r++)
 			{
-			    int mask = session[s].route[r].mask;
-			    while (!(mask & 1))
-			    {
-				width--;
-				mask >>= 1;
-			    }
+				int width = 32;
+				if (session[s].route[r].mask)
+				{
+				    int mask = session[s].route[r].mask;
+				    while (!(mask & 1))
+				    {
+					width--;
+					mask >>= 1;
+				    }
+				}
+
+				*p = 22;	// Framed-Route
+				p[1] = sprintf((char *) p + 2, "%s/%d %s 1",
+					fmtaddr(htonl(session[s].route[r].ip), 0),
+					width, fmtaddr(htonl(session[s].ip), 1)) + 2;
+
+				p += p[1];
 			}
+		}
 
-			*p = 22;	// Framed-Route
-			p[1] = sprintf((char *) p + 2, "%s/%d %s 1",
-				fmtaddr(htonl(session[s].route[r].ip), 0),
-				width, fmtaddr(htonl(session[s].ip), 1)) + 2;
+		if (session[s].session_timeout)
+		{
+			*p = 27;		// Session-Timeout
+			p[1] = 6;
+			*(uint32_t *) (p + 2) = htonl(session[s].session_timeout);
+			p += p[1];
+		}
 
+		if (session[s].idle_timeout)
+		{
+			*p = 28;		// Idle-Timeout
+			p[1] = 6;
+			*(uint32_t *) (p + 2) = htonl(session[s].idle_timeout);
+			p += p[1];
+		}
+
+		if (*session[s].called)
+		{
+			*p = 30;                // called
+			p[1] = strlen(session[s].called) + 2;
+			strcpy((char *) p + 2, session[s].called);
+			p += p[1];
+		}
+
+		if (*session[s].calling)
+		{
+			*p = 31;                // calling
+			p[1] = strlen(session[s].calling) + 2;
+			strcpy((char *) p + 2, session[s].calling);
 			p += p[1];
 		}
 	}
-	if (*session[s].called)
-	{
-		*p = 30;                // called
-		p[1] = strlen(session[s].called) + 2;
-		strcpy((char *) p + 2, session[s].called);
-		p += p[1];
-	}
-	if (*session[s].calling)
-	{
-		*p = 31;                // calling
-		p[1] = strlen(session[s].calling) + 2;
-		strcpy((char *) p + 2, session[s].calling);
-		p += p[1];
-	}
+
 	// NAS-IP-Address
 	*p = 4;
 	p[1] = 6;
@@ -400,7 +463,7 @@ void radiussend(uint16_t r, uint8_t state)
 
 	// All AVpairs added
 	*(uint16_t *) (b + 2) = htons(p - b);
-	if (state != RADIUSAUTH)
+	if (state != RADIUSAUTH && state != RADIUSJUSTAUTH)
 	{
 		// Build auth for accounting packet
 		calc_auth(b, p - b, zero, b + 4);
@@ -413,7 +476,7 @@ void radiussend(uint16_t r, uint8_t state)
 		// get radius port
 		uint16_t port = config->radiusport[(radius[r].try - 1) % config->numradiusservers];
 		// assume RADIUS accounting port is the authentication port +1
-		addr.sin_port = htons((state == RADIUSAUTH) ? port : port+1);
+		addr.sin_port = htons((state == RADIUSAUTH || state == RADIUSJUSTAUTH) ? port : port+1);
 	}
 
 	LOG_HEX(5, "RADIUS Send", b, (p - b));
@@ -496,7 +559,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 		LOG(1, s, session[s].tunnel, "   Unexpected RADIUS response\n");
 		return;
 	}
-	if (radius[r].state != RADIUSAUTH && radius[r].state != RADIUSSTART
+	if (radius[r].state != RADIUSAUTH && radius[r].state != RADIUSJUSTAUTH && radius[r].state != RADIUSSTART
 	    && radius[r].state != RADIUSSTOP && radius[r].state != RADIUSINTERIM)
 	{
 		LOG(1, s, session[s].tunnel, "   Unexpected RADIUS response\n");
@@ -511,7 +574,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 			return; // Do nothing. On timeout, it will try the next radius server.
 		}
 
-		if ((radius[r].state == RADIUSAUTH && r_code != AccessAccept && r_code != AccessReject) ||
+		if (((radius[r].state == RADIUSAUTH ||radius[r].state == RADIUSJUSTAUTH) && r_code != AccessAccept && r_code != AccessReject) ||
 			((radius[r].state == RADIUSSTART || radius[r].state == RADIUSSTOP || radius[r].state == RADIUSINTERIM) && r_code != AccountingResponse))
 		{
 			LOG(1, s, session[s].tunnel, "   Unexpected RADIUS response %s\n", radius_code(r_code));
@@ -519,7 +582,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				// care off finishing the radius session if that's really correct.
 		}
 
-		if (radius[r].state == RADIUSAUTH)
+		if (radius[r].state == RADIUSAUTH || radius[r].state == RADIUSJUSTAUTH)
 		{
 			// run post-auth plugin
 			struct param_post_auth packet = {
@@ -537,7 +600,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 			if (radius[r].chap)
 			{
 				// CHAP
-				uint8_t *p = makeppp(b, sizeof(b), 0, 0, s, t, PPPCHAP);
+				uint8_t *p = makeppp(b, sizeof(b), 0, 0, s, t, PPPCHAP, 0, 0, 0);
 				if (!p) return;	// Abort!
 
 				*p = (r_code == AccessAccept) ? 3 : 4;     // ack/nak
@@ -551,7 +614,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 			else
 			{
 				// PAP
-				uint8_t *p = makeppp(b, sizeof(b), 0, 0, s, t, PPPPAP);
+				uint8_t *p = makeppp(b, sizeof(b), 0, 0, s, t, PPPPAP, 0, 0, 0);
 				if (!p) return;		// Abort!
 
 				// ack/nak
@@ -715,6 +778,22 @@ void processrad(uint8_t *buf, int len, char socket_index)
 							ip_filters[f].used++;
 						}
 					}
+					else if (*p == 27)
+					{
+					    	// Session-Timeout
+					    	if (p[1] < 6) continue;
+						session[s].session_timeout = ntohl(*(uint32_t *)(p + 2));
+						LOG(3, s, session[s].tunnel, "   Radius reply contains Session-Timeout = %u\n", session[s].session_timeout);
+						if(!session[s].session_timeout && config->kill_timedout_sessions)
+                                                        sessionshutdown(s, "Session timeout is zero", CDN_ADMIN_DISC, 0);
+					}
+					else if (*p == 28)
+					{
+					    	// Idle-Timeout
+					    	if (p[1] < 6) continue;
+						session[s].idle_timeout = ntohl(*(uint32_t *)(p + 2));
+						LOG(3, s, session[s].tunnel, "   Radius reply contains Idle-Timeout = %u\n", session[s].idle_timeout);
+					}
 					else if (*p == 99)
 					{
 						// Framed-IPv6-Route
@@ -793,6 +872,7 @@ void radiusretry(uint16_t r)
 			sendchap(s, t);
 			break;
 		case RADIUSAUTH:	// sending auth to RADIUS server
+		case RADIUSJUSTAUTH:	// sending auth to RADIUS server
 		case RADIUSSTART:	// sending start accounting to RADIUS server
 		case RADIUSSTOP:	// sending stop accounting to RADIUS server
 		case RADIUSINTERIM:	// sending interim accounting to RADIUS server

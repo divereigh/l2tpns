@@ -1,16 +1,27 @@
-* Fri Dec 1 2006 Brendan O'Dea <bod@optus.net> 2.1.21
-- Security: Rhys Kidd identified a vulnerability in the handling of
-  heartbeat packets.  Drop oversize heartbeat packets.
+* Thu Jan 20 2011 Brendan O'Dea <bod@optus.net> 2.2.x
+- Apply MLPPP patch from Muhammad Tayseer Alquoatli.
+- Apply patch from Michael O to avoid sending multiple CDNs.
+- Apply patch from Cyril Elkaim to fix an issue with MacOS.
+- Apply patch from Geoffrey D. Bennett to fix retry of control packets.
 
-* Thu Aug 3 2006 Brendan O'Dea <bod@optus.net> 2.1.20
-- Fix sign problem with reporting of unknown VSAs.
-- Allow DNS servers to be specified either using the old or new
-  vendor-specific Ascend formats.
-
-* Fri Jun 23 2006 Brendan O'Dea <bod@optus.net> 2.1.19
+* Mon Dec 18 2006 Brendan O'Dea <bod@optus.net> 2.2.0
+- Only poll clifd if successfully bound.
+- Add "Practical VPNs" document from Liran Tal as Docs/vpn .
+- Add Multilink support from Khaled Al Hamwi.
+- Remove non-working setuid option.
+- Convert manual.html to Docbook.
 - Kludge around problem with Netgear DM602 authentication.
+- Add session/idle timeouts (Graham Maltby).
 - Use result code AVP to set Acct-Terminate-Cause is disconnect cause
   AVP is not present.
+- Add radius_bind_{min,max} to simplify firewalling of RADIUS ports.
+- Fix sign problem with reporting of unknown RADIUS VSAs.
+- Allow DNS servers to be specified either using the old or new
+  vendor-specific Ascend formats.
+- Security [CVE-2006-5873]: Rhys Kidd identified a vulnerability in the
+  handling of heartbeat packets.  Drop oversize heartbeat packets.
+- Don't send interim records before session start (Daryl Tester).
+- Add "shutdown" and "reload" CLI commands (Daryl Tester).
 
 * Tue Apr 18 2006 Brendan O'Dea <bod@optus.net> 2.1.18
 - Don't shutdown on TerminateReq, wait for CDN.

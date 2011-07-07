@@ -821,6 +821,10 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 			break;
 
+		case Closing:
+			sessionshutdown(s, "LCP: ConfigReq in state Closing. This should not happen. Killing session.", CDN_ADMIN_DISC, TERM_LOST_SERVICE);
+			break;
+
 		default:
 		    	LOG(2, s, t, "LCP: ignoring %s in state %s\n", ppp_code(*p), ppp_state(session[s].ppp.lcp));
 			return;

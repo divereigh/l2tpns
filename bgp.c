@@ -195,7 +195,14 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
     /* NEXT_HOP */
     a.flags = BGP_PATH_ATTR_FLAG_TRANS;
     a.code = BGP_PATH_ATTR_CODE_NEXT_HOP;
-    ip = my_address; /* we're it */
+    if (config->nexthop_address)
+    {
+	ip = config->nexthop_address;
+    }
+    else
+    {
+	ip = my_address; /* we're it */
+    }
     a.data.s.len = sizeof(ip);
     memcpy(a.data.s.value, &ip, sizeof(ip));
 

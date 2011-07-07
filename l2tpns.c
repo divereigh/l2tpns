@@ -159,6 +159,7 @@ config_descriptt config_values[] = {
 	CONFIG("ipv6_prefix", ipv6_prefix, IPv6),
 	CONFIG("cli_bind_address", cli_bind_address, IPv4),
 	CONFIG("hostname", hostname, STRING),
+	CONFIG("nexthop_address", nexthop_address, IPv4),
 	{ NULL, 0, 0, 0 },
 };
 

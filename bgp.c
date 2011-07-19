@@ -193,15 +193,6 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
 
     ADD_ATTRIBUTE();
 
-    /* NEXT_HOP */
-    a.flags = BGP_PATH_ATTR_FLAG_TRANS;
-    a.code = BGP_PATH_ATTR_CODE_NEXT_HOP;
-    ip = my_address; /* we're it */
-    a.data.s.len = sizeof(ip);
-    memcpy(a.data.s.value, &ip, sizeof(ip));
-
-    ADD_ATTRIBUTE();
-
     /* MULTI_EXIT_DISC */
     a.flags = BGP_PATH_ATTR_FLAG_OPTIONAL;
     a.code = BGP_PATH_ATTR_CODE_MULTI_EXIT_DISC;
@@ -228,6 +219,18 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
     a.code = BGP_PATH_ATTR_CODE_COMMUNITIES;
     a.data.s.len = sizeof(no_export);
     memcpy(a.data.s.value, &no_export, sizeof(no_export));
+
+    ADD_ATTRIBUTE();
+
+    /* remember the len before adding NEXT_HOP */
+    peer->path_attr_len_without_nexthop = peer->path_attr_len;
+
+    /* NEXT_HOP */
+    a.flags = BGP_PATH_ATTR_FLAG_TRANS;
+    a.code = BGP_PATH_ATTR_CODE_NEXT_HOP;
+    ip = my_address; /* we're it */
+    a.data.s.len = sizeof(ip);
+    memcpy(a.data.s.value, &ip, sizeof(ip));
 
     ADD_ATTRIBUTE();
 

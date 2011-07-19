@@ -203,6 +203,7 @@ struct bgp_peer {
     int cli_flag;			/* updates requested from CLI */
     char *path_attrs;			/* path attrs to send in UPDATE message */
     int path_attr_len;			/* length of path attrs */
+    int path_attr_len_without_nexthop;	/* length of path attrs  without NEXT_HOP */
     uint32_t events;			/* events to poll */
     struct event_data edata;		/* poll data */
     int handle_ipv6_routes;		/* can handle IPv6 routes advertisements */

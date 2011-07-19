@@ -1037,7 +1037,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 			    capability->code, peer->name);
 
 			bgp_send_notification_full(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP,
-				capability, 2 + capability->len);
+				(char *)capability, 2 + capability->len);
 			/* we don't terminate, still; we just jump to the next one */
 			continue;
 		    }
@@ -1050,7 +1050,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 			    mp_cap->afi, mp_cap->safi, peer->name);
 
 			bgp_send_notification_full(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP,
-				capability, 2 + capability->len);
+				(char *)capability, 2 + capability->len);
 			/* we don't terminate, still; we just jump to the next one */
 			continue;
 		    }

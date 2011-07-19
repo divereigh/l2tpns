@@ -762,6 +762,8 @@ static int bgp_connect(struct bgp_peer *peer)
 
     LOG(4, 0, 0, "BGP peer %s: state Active\n", inet_ntoa(addr.sin_addr));
 
+    peer->handle_ipv6_routes = 0;
+
     return bgp_send_open(peer);
 }
 
@@ -784,6 +786,8 @@ static int bgp_handle_connect(struct bgp_peer *peer)
     peer->state_time = time_now;
 
     LOG(4, 0, 0, "BGP peer %s: state Active\n", peer->name);
+
+    peer->handle_ipv6_routes = 0;
 
     return bgp_send_open(peer);
 }
@@ -1051,6 +1055,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 			continue;
 		    }
 
+		    peer->handle_ipv6_routes = 1;
 		}
 	    }
 

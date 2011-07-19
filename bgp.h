@@ -205,6 +205,7 @@ struct bgp_peer {
     int path_attr_len;			/* length of path attrs */
     uint32_t events;			/* events to poll */
     struct event_data edata;		/* poll data */
+    int handle_ipv6_routes;		/* can handle IPv6 routes advertisements */
 };
 
 /* bgp_peer.cli_flag */

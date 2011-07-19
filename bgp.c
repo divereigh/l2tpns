@@ -1094,7 +1094,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 	    }
 
 	    if (notification->error_code == BGP_ERR_OPEN
-		    && notification->subcode == BGP_ERR_OPN_UNSUP_CAP)
+		    && notification->error_subcode == BGP_ERR_OPN_UNSUP_CAP)
 	    {
 		/* the only capability we advertise is this one, so upon receiving
 		   an "unsupported capability" message, we disable IPv6 routes for

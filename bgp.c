@@ -45,6 +45,8 @@ static int bgp_send_keepalive(struct bgp_peer *peer);
 static int bgp_send_update(struct bgp_peer *peer);
 static int bgp_send_notification(struct bgp_peer *peer, uint8_t code,
     uint8_t subcode);
+static int bgp_send_notification_full(struct bgp_peer *peer, uint8_t code,
+    uint8_t subcode, char *notification_data, uint16_t data_len);
 
 static uint16_t our_as;
 static struct bgp_route_list *bgp_routes = 0;
@@ -907,6 +909,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 	    uint8_t capabilities_len;
 	    char *capabilities = NULL;
 	    struct bgp_capability *capability;
+	    struct bgp_mp_cap_param *mp_cap;
 
 	    for (i = 0; i < sizeof(p->header.marker); i++)
 	    {
@@ -979,7 +982,8 @@ static int bgp_handle_input(struct bgp_peer *peer)
 
 		/* sensible check */
 		if (data.opt_len - param_offset < 2
-			|| param->len > data.opt_len - param_offset - 2) {
+			|| param->len > data.opt_len - param_offset - 2)
+		{
 		    LOG(1, 0, 0, "Malformed Optional Parameter list from BGP peer %s\n",
 			peer->name);
 
@@ -988,7 +992,8 @@ static int bgp_handle_input(struct bgp_peer *peer)
 		}
 
 		/* we know only one parameter type */
-		if (param->type != BGP_CAPABILITY_PARAM_TYPE) {
+		if (param->type != BGP_CAPABILITY_PARAM_TYPE)
+		{
 		    LOG(1, 0, 0, "Unsupported Optional Parameter type %d from BGP peer %s\n",
 			param->type, peer->name);
 
@@ -1011,7 +1016,8 @@ static int bgp_handle_input(struct bgp_peer *peer)
 
 		    /* sensible check */
 		    if (capabilities_len - capability_offset < 2
-			    || capability->len > capabilities_len - capability_offset - 2) {
+			    || capability->len > capabilities_len - capability_offset - 2)
+		    {
 			LOG(1, 0, 0, "Malformed Capabilities list from BGP peer %s\n",
 			    peer->name);
 
@@ -1020,14 +1026,31 @@ static int bgp_handle_input(struct bgp_peer *peer)
 		    }
 
 		    /* we only know one capability code */
-		    if (capability->code != XXX) {
+		    if (capability->code != BGP_CAP_CODE_MP
+			    && capability->len != sizeof(struct bgp_mp_cap_param))
+		    {
 			LOG(4, 0, 0, "Unsupported Capability code %d from BGP peer %s\n",
 			    capability->code, peer->name);
 
-			/* TODO: send _which_ capability is unsupported */
-			bgp_send_notification(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP);
+			bgp_send_notification_full(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP,
+				capability, 2 + capability->len);
 			/* we don't terminate, still; we just jump to the next one */
+			continue;
 		    }
+
+		    mp_cap = (struct bgp_mp_cap_param *)&capability->value;
+		    /* the only <AFI, SAFI> tuple we support */
+		    if (mp_cap->afi != AF_INET6 && mp_cap->safi != BGP_MP_SAFI_UNICAST)
+		    {
+			LOG(4, 0, 0, "Unsupported multiprotocol AFI %d and SAFI %d from BGP peer %s\n",
+			    mp_cap->afi, mp_cap->safi, peer->name);
+
+			bgp_send_notification_full(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP,
+				capability, 2 + capability->len);
+			/* we don't terminate, still; we just jump to the next one */
+			continue;
+		    }
+
 		}
 	    }
 
@@ -1280,6 +1303,12 @@ static int bgp_send_update(struct bgp_peer *peer)
 static int bgp_send_notification(struct bgp_peer *peer, uint8_t code,
     uint8_t subcode)
 {
+    return bgp_send_notification_full(peer, code, subcode, NULL, 0);
+}
+
+static int bgp_send_notification_full(struct bgp_peer *peer, uint8_t code,
+    uint8_t subcode, char *notification_data, uint16_t data_len)
+{
     struct bgp_data_notification data;
     uint16_t len = 0;
 
@@ -1288,6 +1317,9 @@ static int bgp_send_notification(struct bgp_peer *peer, uint8_t code,
 
     data.error_subcode = subcode;
     len += sizeof(data.error_code);
+
+    memcpy(data.data, notification_data, data_len);
+    len += data_len;
 
     memset(peer->outbuf->packet.header.marker, 0xff,
 	sizeof(peer->outbuf->packet.header.marker));

@@ -46,17 +46,30 @@ struct bgp_data_open {
 struct bgp_opt_param {
     uint8_t type;
     uint8_t len;
-#define BGP_MAX_OPT_PARAM_SIZE 256
+#define BGP_MAX_OPT_PARAM_SIZE	256
     char value[BGP_MAX_OPT_PARAM_SIZE];
 } __attribute__ ((packed));
 
-#define BGP_CAPABILITY_PARAM_TYPE 2
+#define BGP_CAPABILITY_PARAM_TYPE   2
 struct bgp_capability {
     uint8_t code;
     uint8_t len;
-#define BGP_MAX_CAPABILITY_SIZE 256
+#define BGP_MAX_CAPABILITY_SIZE	256
     char value[BGP_MAX_CAPABILITY_SIZE];
 } __attribute__ ((packed));
+
+/* RFC4760 Multiprotocol extension */
+#define BGP_CAP_CODE_MP	1
+
+struct bgp_mp_cap_param {
+    uint16_t afi; /* sa_family_t */
+    uint8_t reserved; /* SHOULD be 0 */
+    uint8_t safi;
+} __attribute__ ((packed));
+
+/* bgp_mp_cap_param.safi */
+#define BGP_MP_SAFI_UNICAST	1
+#define BGP_MP_SAFI_MULTICAST	2
 
 struct bgp_ip_prefix {
     uint8_t len;

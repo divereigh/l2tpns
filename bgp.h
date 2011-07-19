@@ -50,7 +50,7 @@ struct bgp_opt_param {
     char value[BGP_MAX_OPT_PARAM_SIZE];
 } __attribute__ ((packed));
 
-#define BGP_CAPABILITY_PARAM_TYPE   2
+#define BGP_PARAM_TYPE_CAPABILITY	2
 struct bgp_capability {
     uint8_t code;
     uint8_t len;

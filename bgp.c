@@ -996,7 +996,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 		}
 
 		/* we know only one parameter type */
-		if (param->type != BGP_CAPABILITY_PARAM_TYPE)
+		if (param->type != BGP_PARAM_TYPE_CAPABILITY)
 		{
 		    LOG(1, 0, 0, "Unsupported Optional Parameter type %d from BGP peer %s\n",
 			param->type, peer->name);
@@ -1044,7 +1044,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 
 		    mp_cap = (struct bgp_mp_cap_param *)&capability->value;
 		    /* the only <AFI, SAFI> tuple we support */
-		    if (mp_cap->afi != AF_INET6 && mp_cap->safi != BGP_MP_SAFI_UNICAST)
+		    if (ntohs(mp_cap->afi) != AF_INET6 && mp_cap->safi != BGP_MP_SAFI_UNICAST)
 		    {
 			LOG(4, 0, 0, "Unsupported multiprotocol AFI %d and SAFI %d from BGP peer %s\n",
 			    mp_cap->afi, mp_cap->safi, peer->name);
@@ -1123,6 +1123,9 @@ static int bgp_handle_input(struct bgp_peer *peer)
 static int bgp_send_open(struct bgp_peer *peer)
 {
     struct bgp_data_open data;
+    struct bgp_mp_cap_param mp_ipv6 = { htons(AF_INET6), 0, BGP_MP_SAFI_UNICAST };
+    struct bgp_capability cap_mp_ipv6;
+    struct bgp_opt_param param_cap_mp_ipv6;
     uint16_t len = sizeof(peer->outbuf->packet.header);
 
     memset(peer->outbuf->packet.header.marker, 0xff,
@@ -1134,7 +1137,18 @@ static int bgp_send_open(struct bgp_peer *peer)
     data.as = htons(our_as);
     data.hold_time = htons(peer->hold);
     data.identifier = my_address;
-    data.opt_len = 0;
+
+    /* construct the param and capability */
+    cap_mp_ipv6.code = BGP_CAP_CODE_MP;
+    cap_mp_ipv6.len = sizeof(mp_ipv6);
+    memcpy(&cap_mp_ipv6.value, &mp_ipv6, cap_mp_ipv6.len);
+
+    param_cap_mp_ipv6.type = BGP_PARAM_TYPE_CAPABILITY;
+    param_cap_mp_ipv6.len = 2 + sizeof(mp_ipv6);
+    memcpy(&param_cap_mp_ipv6.value, &cap_mp_ipv6, param_cap_mp_ipv6.len);
+
+    data.opt_len = 2 + param_cap_mp_ipv6.len;
+    memcpy(&data.opt_params, &param_cap_mp_ipv6, data.opt_len);
 
     memcpy(peer->outbuf->packet.data, &data, BGP_DATA_OPEN_SIZE);
     len += BGP_DATA_OPEN_SIZE;

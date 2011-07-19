@@ -43,6 +43,21 @@ struct bgp_data_open {
     char opt_params[sizeof(((struct bgp_packet *)0)->data) - BGP_DATA_OPEN_SIZE]; /* variable */
 } __attribute__ ((packed));
 
+struct bgp_opt_param {
+    uint8_t type;
+    uint8_t len;
+#define BGP_MAX_OPT_PARAM_SIZE 256
+    char value[BGP_MAX_OPT_PARAM_SIZE];
+} __attribute__ ((packed));
+
+#define BGP_CAPABILITY_PARAM_TYPE 2
+struct bgp_capability {
+    uint8_t code;
+    uint8_t len;
+#define BGP_MAX_CAPABILITY_SIZE 256
+    char value[BGP_MAX_CAPABILITY_SIZE];
+} __attribute__ ((packed));
+
 struct bgp_ip_prefix {
     uint8_t len;
     uint32_t prefix; /* variable */
@@ -101,6 +116,7 @@ struct bgp_data_notification {
 } __attribute__ ((packed));
 
 /* bgp_data_notification.error_code, .error_subcode */
+#define BGP_ERR_UNSPEC			0
 #define BGP_ERR_HEADER			1
 #  define BGP_ERR_HDR_NOT_SYNC		  1
 #  define BGP_ERR_HDR_BAD_LEN		  2
@@ -112,6 +128,7 @@ struct bgp_data_notification {
 #  define BGP_ERR_OPN_UNSUP_PARAM	  4
 #  define BGP_ERR_OPN_AUTH_FAILURE	  5
 #  define BGP_ERR_OPN_HOLD_TIME		  6
+#  define BGP_ERR_OPN_UNSUP_CAP		  7
 #define BGP_ERR_UPDATE			3
 #  define BGP_ERR_UPD_BAD_ATTR_LIST	  1
 #  define BGP_ERR_UPD_UNKN_WK_ATTR	  2

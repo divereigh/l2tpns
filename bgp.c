@@ -902,6 +902,11 @@ static int bgp_handle_input(struct bgp_peer *peer)
 	    struct bgp_data_open data;
 	    int hold;
 	    int i;
+	    off_t param_offset, capability_offset;
+	    struct bgp_opt_param *param;
+	    uint8_t capabilities_len;
+	    char *capabilities = NULL;
+	    struct bgp_capability *capability;
 
 	    for (i = 0; i < sizeof(p->header.marker); i++)
 	    {
@@ -964,10 +969,70 @@ static int bgp_handle_input(struct bgp_peer *peer)
 	    if (peer->keepalive * 3 > peer->hold)
 		peer->keepalive = peer->hold / 3;
 
+	    /* check for optional parameters */
+	    /* 2 is for the size of type + len (both uint8_t) */
+	    for (param_offset = 0;
+		    param_offset < data.opt_len;
+		    param_offset += 2 + param->len)
+	    {
+		param = (struct bgp_opt_param *)(&data.opt_params + param_offset);
+
+		/* sensible check */
+		if (data.opt_len - param_offset < 2
+			|| param->len > data.opt_len - param_offset - 2) {
+		    LOG(1, 0, 0, "Malformed Optional Parameter list from BGP peer %s\n",
+			peer->name);
+
+		    bgp_send_notification(peer, BGP_ERR_OPEN, BGP_ERR_UNSPEC);
+		    return 0;
+		}
+
+		/* we know only one parameter type */
+		if (param->type != BGP_CAPABILITY_PARAM_TYPE) {
+		    LOG(1, 0, 0, "Unsupported Optional Parameter type %d from BGP peer %s\n",
+			param->type, peer->name);
+
+		    bgp_send_notification(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_PARAM);
+		    return 0;
+		}
+
+		capabilities_len = param->len;
+		capabilities = (char *)&param->value;
+	    }
+
+	    /* look for BGP multiprotocol capability */
+	    if (capabilities)
+	    {
+		for (capability_offset = 0;
+			capability_offset < capabilities_len;
+			capability_offset += 2 + capability->len)
+		{
+		    capability = (struct bgp_capability *)(capabilities + capability_offset);
+
+		    /* sensible check */
+		    if (capabilities_len - capability_offset < 2
+			    || capability->len > capabilities_len - capability_offset - 2) {
+			LOG(1, 0, 0, "Malformed Capabilities list from BGP peer %s\n",
+			    peer->name);
+
+			bgp_send_notification(peer, BGP_ERR_OPEN, BGP_ERR_UNSPEC);
+			return 0;
+		    }
+
+		    /* we only know one capability code */
+		    if (capability->code != XXX) {
+			LOG(4, 0, 0, "Unsupported Capability code %d from BGP peer %s\n",
+			    capability->code, peer->name);
+
+			/* TODO: send _which_ capability is unsupported */
+			bgp_send_notification(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP);
+			/* we don't terminate, still; we just jump to the next one */
+		    }
+		}
+	    }
+
 	    /* next transition requires an exchange of keepalives */
 	    bgp_send_keepalive(peer);
-
-	    /* FIXME: may need to check for optional params */
 	}
 
 	break;

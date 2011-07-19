@@ -1093,6 +1093,17 @@ static int bgp_handle_input(struct bgp_peer *peer)
 		return 0;
 	    }
 
+	    if (notification->error_code == BGP_ERR_OPEN
+		    && notification->subcode == BGP_ERR_OPN_UNSUP_CAP)
+	    {
+		/* the only capability we advertise is this one, so upon receiving
+		   an "unsupported capability" message, we disable IPv6 routes for
+		   this peer */
+		LOG(4, 0, 0, "BGP peer %s doesn't support IPv6 routes advertisement\n", peer->name);
+		peer->handle_ipv6_routes = 0;
+		break;
+	    }
+
 	    /* FIXME: should handle more notifications */
 	    LOG(4, 0, 0, "BGP peer %s sent unhandled NOTIFICATION %d\n",
 		peer->name, (int) notification->error_code);

@@ -102,6 +102,10 @@ set accounting_dir "/var/run/l2tpns/acct"
 # IPv6 address prefix
 #set ipv6_prefix ::
 
+# BGP NEXT_HOP path attribute
+#set nexthop 10.0.1.1
+#set nexthop6 2001:db8::1
+
 # Drop/kill sessions
 #load plugin "sessionctl"
 

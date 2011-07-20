@@ -250,6 +250,51 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
 
     memcpy(peer->path_attrs, path_attrs, peer->path_attr_len);
 
+    /* multiprotocol attributes initialization */
+    if (config->ipv6_prefix.s6_addr[0])
+    {
+	struct bgp_attr_mp_reach_nlri_partial mp_reach_nlri_partial;
+	struct bgp_attr_mp_unreach_nlri_partial mp_unreach_nlri_partial;
+
+	a.flags = BGP_PATH_ATTR_FLAG_OPTIONAL;
+	a.code = BGP_PATH_ATTR_CODE_MP_REACH_NLRI;
+	a.data.s.len = 0; /* will be set on UPDATE */
+
+	mp_reach_nlri_partial.afi = htons(AF_INET6);
+	mp_reach_nlri_partial.safi = BGP_MP_SAFI_UNICAST;
+	mp_reach_nlri_partial.reserved = 0;
+	mp_reach_nlri_partial.next_hop_len = 16;
+
+	/* use the defined nexthop6, or our address in ipv6_prefix */
+	if (config->nexthop6_address.s6_addr[0])
+	    memcpy(&mp_reach_nlri_partial.next_hop,
+		    &config->nexthop6_address.s6_addr, 16);
+	else
+	{
+	    /* our address is ipv6prefix::1 */
+	    memcpy(&mp_reach_nlri_partial.next_hop,
+		    &config->ipv6_prefix.s6_addr, 16);
+	    mp_reach_nlri_partial.next_hop[15] = 1;
+	}
+
+	memcpy(&a.data.s.value, &mp_reach_nlri_partial,
+		sizeof(struct bgp_attr_mp_reach_nlri_partial));
+	memcpy(&peer->mp_reach_nlri_partial, &a,
+		BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE);
+
+	a.flags = BGP_PATH_ATTR_FLAG_OPTIONAL | BGP_PATH_ATTR_FLAG_EXTLEN;
+	a.code = BGP_PATH_ATTR_CODE_MP_UNREACH_NLRI;
+	a.data.e.len = 0; /* will be set on UPDATE */
+
+	mp_unreach_nlri_partial.afi = htons(AF_INET6);
+	mp_unreach_nlri_partial.safi = BGP_MP_SAFI_UNICAST;
+
+	memcpy(&a.data.e.value, &mp_unreach_nlri_partial,
+		sizeof(struct bgp_attr_mp_unreach_nlri_partial));
+	memcpy(&peer->mp_unreach_nlri_partial, &a,
+		BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE);
+    }
+
     LOG(4, 0, 0, "Initiating BGP connection to %s (routing %s)\n",
 	name, enable ? "enabled" : "suspended");
 
@@ -1492,6 +1537,162 @@ static int bgp_send_update(struct bgp_peer *peer)
 /* send/buffer UPDATE message for IPv6 routes */
 static int bgp_send_update6(struct bgp_peer *peer)
 {
+    uint16_t unf_len = 0;
+    uint16_t attr_len;
+    char *unreach_len;
+    uint8_t reach_len;
+    uint16_t len = sizeof(peer->outbuf->packet.header);
+    struct bgp_route6_list *have = peer->routes6;
+    struct bgp_route6_list *want = peer->routing ? bgp_routes6 : 0;
+    struct bgp_route6_list *e = 0;
+    struct bgp_route6_list *add = 0;
+    int s;
+    char ipv6addr[INET6_ADDRSTRLEN];
+
+    char *data = (char *) &peer->outbuf->packet.data;
+
+    /* need leave room for attr_len, bgp_path_attrs and one prefix */
+    char *max = (char *) &peer->outbuf->packet.data
+	+ sizeof(peer->outbuf->packet.data)
+	- sizeof(attr_len) - peer->path_attr_len_without_nexthop
+	- BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE - sizeof(struct bgp_ip6_prefix);
+
+    memset(peer->outbuf->packet.header.marker, 0xff,
+	sizeof(peer->outbuf->packet.header.marker));
+
+    peer->outbuf->packet.header.type = BGP_MSG_UPDATE;
+
+    /* insert non-MP unf_len */
+    memcpy(data, &unf_len, sizeof(unf_len));
+    /* skip over attr_len too; will be filled when known */
+    data += sizeof(unf_len) + sizeof(attr_len);
+    len += sizeof(unf_len) + sizeof(attr_len);
+
+    /* copy usual attributes */
+    memcpy(data, peer->path_attrs, peer->path_attr_len_without_nexthop);
+    data += peer->path_attr_len_without_nexthop;
+    len += peer->path_attr_len_without_nexthop;
+
+    /* copy MP unreachable NLRI heading */
+    memcpy(data, peer->mp_unreach_nlri_partial,
+	    BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE);
+    /* remember where to update this attr len */
+    unreach_len = data + 2;
+    data += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+    len += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+
+    peer->update_routes6 = 0; /* tentatively clear */
+
+    /* find differences */
+    while ((have || want) && data < (max - sizeof(struct bgp_ip6_prefix)))
+    {
+	if (have)
+	    s = want
+		? memcmp(&have->dest, &want->dest, sizeof(have->dest))
+		: -1;
+	else
+	    s = 1;
+
+	if (s < 0) /* found one to delete */
+	{
+	    struct bgp_route6_list *tmp = have;
+	    have = have->next;
+
+	    s = BGP_IP_PREFIX_SIZE(tmp->dest);
+	    memcpy(data, &tmp->dest, s);
+	    data += s;
+	    unf_len += s;
+	    len += s;
+
+	    LOG(5, 0, 0, "Withdrawing route %s/%d from BGP peer %s\n",
+		inet_ntop(AF_INET6, &tmp->dest.prefix, ipv6addr, INET6_ADDRSTRLEN),
+		tmp->dest.len, peer->name);
+
+	    free(tmp);
+
+	    if (e)
+		e->next = have;
+	    else
+		peer->routes6 = have;
+	}
+	else
+	{
+	    if (!s) /* same */
+	    {
+		e = have; /* stash the last found to relink above */
+		have = have->next;
+		want = want->next;
+	    }
+	    else if (s > 0) /* addition reqd. */
+	    {
+		if (add)
+		{
+		    peer->update_routes6 = 1; /* only one add per packet */
+		    if (!have)
+			break;
+		}
+		else
+		    add = want;
+
+		if (want)
+		    want = want->next;
+	    }
+	}
+    }
+
+    if (have || want)
+	peer->update_routes6 = 1; /* more to do */
+
+    /* anything changed? */
+    if (!(unf_len || add))
+	return 1;
+
+    /* go back and insert MP unf_len */
+    unf_len += sizeof(struct bgp_attr_mp_unreach_nlri_partial);
+    unf_len = htons(unf_len);
+    memcpy(&unreach_len, &unf_len, sizeof(unf_len));
+
+    if (add)
+    {
+	if (!(e = malloc(sizeof(*e))))
+	{
+	    LOG(0, 0, 0, "Can't allocate route for %s/%d (%s)\n",
+		inet_ntop(AF_INET6, &add->dest.prefix, ipv6addr, INET6_ADDRSTRLEN),
+		add->dest.len, strerror(errno));
+
+	    return 0;
+	}
+
+	memcpy(e, add, sizeof(*e));
+	e->next = 0;
+	peer->routes6 = bgp_insert_route6(peer->routes6, e);
+
+	/* copy MP reachable NLRI heading */
+	memcpy(data, peer->mp_reach_nlri_partial,
+		BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE);
+	/* with proper len */
+	reach_len = BGP_IP_PREFIX_SIZE(add->dest);
+	data[2] = reach_len;
+	data += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+	len += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+
+	memcpy(data, &add->dest, reach_len);
+	data += reach_len;
+	len += reach_len;
+
+	LOG(5, 0, 0, "Advertising route %s/%d to BGP peer %s\n",
+	    inet_ntop(AF_INET6, &add->dest.prefix, ipv6addr, INET6_ADDRSTRLEN),
+	    add->dest.len, peer->name);
+    }
+
+    /* go back and insert attr_len */
+    attr_len = htons(len - 4);
+    memcpy(&peer->outbuf->packet.data + 2, &attr_len, sizeof(attr_len));
+
+    peer->outbuf->packet.header.len = htons(len);
+    peer->outbuf->done = 0;
+
+    return bgp_write(peer);
 }
 
 /* send/buffer NOTIFICATION message */

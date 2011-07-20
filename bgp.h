@@ -101,6 +101,22 @@ struct bgp_path_attr {
     } data; /* variable */
 } __attribute__ ((packed));
 
+struct bgp_attr_mp_reach_nlri_partial {
+    uint16_t afi; /* sa_family_t */
+    uint8_t safi;
+    uint8_t next_hop_len;
+    uint8_t next_hop[16];
+    uint8_t reserved;
+} __attribute__ ((packed));
+#define BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE (3 + sizeof(struct bgp_attr_mp_reach_nlri_partial))
+
+struct bgp_attr_mp_unreach_nlri_partial {
+    uint16_t afi; /* sa_family_t */
+    uint8_t safi;
+} __attribute__ ((packed));
+/* we use it as an extended attribute */
+#define BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE (4 + sizeof(struct bgp_attr_mp_unreach_nlri_partial))
+
 /* bgp_path_attr.flags (bitfields) */
 #define BGP_PATH_ATTR_FLAG_OPTIONAL	(1 << 7)
 #define BGP_PATH_ATTR_FLAG_TRANS	(1 << 6)
@@ -121,9 +137,11 @@ struct bgp_path_attr {
 #define BGP_PATH_ATTR_CODE_ATOMIC_AGGREGATE	6	/* well-known, discretionary */
 #define BGP_PATH_ATTR_CODE_AGGREGATOR		7	/* optional, transitive */
 #define BGP_PATH_ATTR_CODE_COMMUNITIES		8	/* optional, transitive (RFC1997) */
+#define BGP_PATH_ATTR_CODE_MP_REACH_NLRI	14	/* optional, non-transitive (RFC4760) */
+#define BGP_PATH_ATTR_CODE_MP_UNREACH_NLRI	15	/* optional, non-transitive (RFC4760) */
 
 #define BGP_PATH_ATTR_SIZE(p) ((((p).flags & BGP_PATH_ATTR_FLAG_EXTLEN) \
-    ? ((p).data.e.len + 1) : (p).data.s.len) + 3)
+    ? ((p).data.e.len + 4) : (p).data.s.len) + 3)
 
 /* well known COMMUNITIES */
 #define BGP_COMMUNITY_NO_EXPORT			0xffffff01	/* don't advertise outside confederation */
@@ -222,6 +240,8 @@ struct bgp_peer {
     int handle_ipv6_routes;		/* can handle IPv6 routes advertisements */
     int update_routes6;			/* UPDATE required for IPv6 routes */
     struct bgp_route6_list *routes6;	/* IPv6 routes known by this peer */
+    char mp_reach_nlri_partial[BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE];
+    char mp_unreach_nlri_partial[BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE];
 };
 
 /* bgp_peer.cli_flag */

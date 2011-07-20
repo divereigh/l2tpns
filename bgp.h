@@ -71,11 +71,19 @@ struct bgp_mp_cap_param {
 #define BGP_MP_SAFI_UNICAST	1
 #define BGP_MP_SAFI_MULTICAST	2
 
+struct bgp_ip6_prefix {
+    uint8_t len;
+    uint8_t prefix[16]; /* variable */
+} __attribute__ ((packed));
+
+/* end of RFC4760 specific definitions */
+
 struct bgp_ip_prefix {
     uint8_t len;
     uint32_t prefix; /* variable */
 } __attribute__ ((packed));
 
+/* works for both IPv4 and IPv6 prefixes */
 #define BGP_IP_PREFIX_SIZE(p) (1 + ((p).len / 8) + ((p).len % 8 != 0))
 
 struct bgp_path_attr {
@@ -168,6 +176,11 @@ enum bgp_state {
     Established,			/* established */
 };
 
+struct bgp_route6_list {
+    struct bgp_ip6_prefix dest;
+    struct bgp_route6_list *next;
+};
+
 struct bgp_route_list {
     struct bgp_ip_prefix dest;
     struct bgp_route_list *next;
@@ -207,6 +220,8 @@ struct bgp_peer {
     uint32_t events;			/* events to poll */
     struct event_data edata;		/* poll data */
     int handle_ipv6_routes;		/* can handle IPv6 routes advertisements */
+    int update_routes6;			/* UPDATE required for IPv6 routes */
+    struct bgp_route6_list *routes6;	/* IPv6 routes known by this peer */
 };
 
 /* bgp_peer.cli_flag */
@@ -226,7 +241,9 @@ void bgp_stop(struct bgp_peer *peer);
 void bgp_halt(struct bgp_peer *peer);
 int bgp_restart(struct bgp_peer *peer);
 int bgp_add_route(in_addr_t ip, in_addr_t mask);
+int bgp_add_route6(struct in6_addr ip, int prefixlen);
 int bgp_del_route(in_addr_t ip, in_addr_t mask);
+int bgp_del_route6(struct in6_addr ip, int prefixlen);
 void bgp_enable_routing(int enable);
 int bgp_set_poll(void);
 int bgp_process(uint32_t events[]);

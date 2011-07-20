@@ -32,8 +32,11 @@ static void bgp_set_retry(struct bgp_peer *peer);
 static void bgp_cidr(in_addr_t ip, in_addr_t mask, struct bgp_ip_prefix *pfx);
 static struct bgp_route_list *bgp_insert_route(struct bgp_route_list *head,
     struct bgp_route_list *new);
+static struct bgp_route6_list *bgp_insert_route6(struct bgp_route6_list *head,
+    struct bgp_route6_list *new);
 
 static void bgp_free_routes(struct bgp_route_list *routes);
+static void bgp_free_routes6(struct bgp_route6_list *routes);
 static char const *bgp_msg_type_str(uint8_t type);
 static int bgp_connect(struct bgp_peer *peer);
 static int bgp_handle_connect(struct bgp_peer *peer);
@@ -43,6 +46,7 @@ static int bgp_handle_input(struct bgp_peer *peer);
 static int bgp_send_open(struct bgp_peer *peer);
 static int bgp_send_keepalive(struct bgp_peer *peer);
 static int bgp_send_update(struct bgp_peer *peer);
+static int bgp_send_update6(struct bgp_peer *peer);
 static int bgp_send_notification(struct bgp_peer *peer, uint8_t code,
     uint8_t subcode);
 static int bgp_send_notification_full(struct bgp_peer *peer, uint8_t code,
@@ -50,6 +54,7 @@ static int bgp_send_notification_full(struct bgp_peer *peer, uint8_t code,
 
 static uint16_t our_as;
 static struct bgp_route_list *bgp_routes = 0;
+static struct bgp_route6_list *bgp_routes6 = 0;
 
 int bgp_configured = 0;
 struct bgp_peer *bgp_peers = 0;
@@ -90,6 +95,7 @@ int bgp_setup(int as)
     	return 0;
 
     bgp_routes = 0;
+    bgp_routes6 = 0;
     bgp_configured = 0; /* set by bgp_start */
 
     return 1;
@@ -272,6 +278,8 @@ static void bgp_clear(struct bgp_peer *peer)
 
     bgp_free_routes(peer->routes);
     peer->routes = 0;
+    bgp_free_routes6(peer->routes6);
+    peer->routes6 = 0;
 
     peer->outbuf->packet.header.len = 0;
     peer->outbuf->done = 0;
@@ -379,6 +387,33 @@ static struct bgp_route_list *bgp_insert_route(struct bgp_route_list *head,
     return head;
 }
 
+/* insert route6 into list; sorted */
+static struct bgp_route6_list *bgp_insert_route6(struct bgp_route6_list *head,
+    struct bgp_route6_list *new)
+{
+    struct bgp_route6_list *p = head;
+    struct bgp_route6_list *e = 0;
+
+    while (p && memcmp(&p->dest, &new->dest, sizeof(p->dest)) < 0)
+    {
+	e = p;
+	p = p->next;
+    }
+
+    if (e)
+    {
+	new->next = e->next;
+	e->next = new;
+    }
+    else
+    {
+	new->next = head;
+	head = new;
+    }
+
+    return head;
+}
+
 /* add route to list for peers */
 /*
  * Note:  this doesn't do route aggregation, nor drop routes if a less
@@ -431,6 +466,58 @@ int bgp_add_route(in_addr_t ip, in_addr_t mask)
     return 1;
 }
 
+/* add route to list for peers */
+/*
+ * Note: same provisions as above
+ */
+int bgp_add_route6(struct in6_addr ip, int prefixlen)
+{
+    struct bgp_route6_list *r = bgp_routes6;
+    struct bgp_route6_list add;
+    int i;
+    char ipv6addr[INET6_ADDRSTRLEN];
+
+    memcpy(&add.dest.prefix, &ip.s6_addr, 16);
+    add.dest.len = prefixlen;
+    add.next = 0;
+
+    /* check for duplicate */
+    while (r)
+    {
+	i = memcmp(&r->dest, &add.dest, sizeof(r->dest));
+	if (!i)
+	    return 1; /* already covered */
+
+	if (i > 0)
+	    break;
+
+	r = r->next;
+    }
+
+    /* insert into route list; sorted */
+    if (!(r = malloc(sizeof(*r))))
+    {
+	LOG(0, 0, 0, "Can't allocate route for %s/%d (%s)\n",
+	    inet_ntop(AF_INET6, &ip, ipv6addr, INET6_ADDRSTRLEN), add.dest.len,
+	    strerror(errno));
+
+	return 0;
+    }
+
+    memcpy(r, &add, sizeof(*r));
+    bgp_routes6 = bgp_insert_route6(bgp_routes6, r);
+
+    /* flag established peers for update */
+    for (i = 0; i < BGP_NUM_PEERS; i++)
+	if (bgp_peers[i].state == Established)
+	    bgp_peers[i].update_routes6 = 1;
+
+    LOG(4, 0, 0, "Registered BGP route %s/%d\n",
+	inet_ntop(AF_INET6, &ip, ipv6addr, INET6_ADDRSTRLEN), add.dest.len);
+
+    return 1;
+}
+
 /* remove route from list for peers */
 int bgp_del_route(in_addr_t ip, in_addr_t mask)
 {
@@ -476,6 +563,57 @@ int bgp_del_route(in_addr_t ip, in_addr_t mask)
 
     LOG(4, 0, 0, "Removed BGP route %s/%d\n",
 	fmtaddr(del.dest.prefix, 0), del.dest.len);
+
+    return 1;
+}
+
+/* remove route from list for peers */
+int bgp_del_route6(struct in6_addr ip, int prefixlen)
+{
+    struct bgp_route6_list *r = bgp_routes6;
+    struct bgp_route6_list *e = 0;
+    struct bgp_route6_list del;
+    int i;
+    char ipv6addr[INET6_ADDRSTRLEN];
+
+    memcpy(&del.dest.prefix, &ip.s6_addr, 16);
+    del.dest.len = prefixlen;
+    del.next = 0;
+
+    /* find entry in routes list and remove */
+    while (r)
+    {
+	i = memcmp(&r->dest, &del.dest, sizeof(r->dest));
+	if (!i)
+	{
+	    if (e)
+		e->next = r->next;
+	    else
+		bgp_routes6 = r->next;
+
+	    free(r);
+	    break;
+	}
+
+	e = r;
+
+	if (i > 0)
+	    r = 0; /* stop */
+	else
+	    r = r->next;
+    }
+
+    /* not found */
+    if (!r)
+	return 1;
+
+    /* flag established peers for update */
+    for (i = 0; i < BGP_NUM_PEERS; i++)
+	if (bgp_peers[i].state == Established)
+	    bgp_peers[i].update_routes6 = 1;
+
+    LOG(4, 0, 0, "Removed BGP route %s/%d\n",
+	inet_ntop(AF_INET6, &ip, ipv6addr, INET6_ADDRSTRLEN), del.dest.len);
 
     return 1;
 }
@@ -624,6 +762,14 @@ int bgp_process(uint32_t events[])
 		continue;
 	}
 
+	/* process pending IPv6 updates */
+	if (peer->update_routes6
+	    && !peer->outbuf->packet.header.len) /* ditto */
+	{
+	    if (!bgp_send_update6(peer))
+		continue;
+	}
+
 	/* process timers */
 	if (peer->state == Established)
 	{
@@ -659,6 +805,17 @@ int bgp_process(uint32_t events[])
 static void bgp_free_routes(struct bgp_route_list *routes)
 {
     struct bgp_route_list *tmp;
+
+    while ((tmp = routes))
+    {
+	routes = tmp->next;
+	free(tmp);
+    }
+}
+
+static void bgp_free_routes6(struct bgp_route6_list *routes)
+{
+    struct bgp_route6_list *tmp;
 
     while ((tmp = routes))
     {
@@ -1330,6 +1487,11 @@ static int bgp_send_update(struct bgp_peer *peer)
     peer->outbuf->done = 0;
 
     return bgp_write(peer);
+}
+
+/* send/buffer UPDATE message for IPv6 routes */
+static int bgp_send_update6(struct bgp_peer *peer)
+{
 }
 
 /* send/buffer NOTIFICATION message */

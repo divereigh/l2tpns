@@ -209,6 +209,12 @@ struct bgp_buf {
     size_t done;			/* bytes sent/recvd */
 };
 
+enum bgp_mp_handling {
+    HandleIPv6Routes,
+    DoesntHandleIPv6Routes,
+    HandlingUnknown,
+};
+
 /* state */
 struct bgp_peer {
     char name[32];			/* peer name */
@@ -237,7 +243,7 @@ struct bgp_peer {
     int path_attr_len_without_nexthop;	/* length of path attrs  without NEXT_HOP */
     uint32_t events;			/* events to poll */
     struct event_data edata;		/* poll data */
-    int handle_ipv6_routes;		/* can handle IPv6 routes advertisements */
+    enum bgp_mp_handling mp_handling;	/* how it handles IPv6 routes advertisements */
     int update_routes6;			/* UPDATE required for IPv6 routes */
     struct bgp_route6_list *routes6;	/* IPv6 routes known by this peer */
     char mp_reach_nlri_partial[BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE];

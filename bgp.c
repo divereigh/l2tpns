@@ -295,6 +295,8 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
 		BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE);
     }
 
+    peer->mp_handling = HandlingUnknown;
+
     LOG(4, 0, 0, "Initiating BGP connection to %s (routing %s)\n",
 	name, enable ? "enabled" : "suspended");
 
@@ -967,8 +969,6 @@ static int bgp_connect(struct bgp_peer *peer)
 
     LOG(4, 0, 0, "BGP peer %s: state Active\n", inet_ntoa(addr.sin_addr));
 
-    peer->handle_ipv6_routes = 0;
-
     return bgp_send_open(peer);
 }
 
@@ -991,8 +991,6 @@ static int bgp_handle_connect(struct bgp_peer *peer)
     peer->state_time = time_now;
 
     LOG(4, 0, 0, "BGP peer %s: state Active\n", peer->name);
-
-    peer->handle_ipv6_routes = 0;
 
     return bgp_send_open(peer);
 }
@@ -1260,7 +1258,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 			continue;
 		    }
 
-		    peer->handle_ipv6_routes = 1;
+		    peer->mp_handling = HandleIPv6Routes;
 		}
 	    }
 
@@ -1299,13 +1297,22 @@ static int bgp_handle_input(struct bgp_peer *peer)
 	    }
 
 	    if (notification->error_code == BGP_ERR_OPEN
+		    && notification->error_subcode == BGP_ERR_OPN_UNSUP_PARAM)
+	    {
+		LOG(4, 0, 0, "BGP peer %s doesn't support BGP Capabilities\n", peer->name);
+		peer->mp_handling = DoesntHandleIPv6Routes;
+		bgp_restart(peer);
+		return 0;
+	    }
+
+	    if (notification->error_code == BGP_ERR_OPEN
 		    && notification->error_subcode == BGP_ERR_OPN_UNSUP_CAP)
 	    {
 		/* the only capability we advertise is this one, so upon receiving
 		   an "unsupported capability" message, we disable IPv6 routes for
 		   this peer */
 		LOG(4, 0, 0, "BGP peer %s doesn't support IPv6 routes advertisement\n", peer->name);
-		peer->handle_ipv6_routes = 0;
+		peer->mp_handling = DoesntHandleIPv6Routes;
 		break;
 	    }
 
@@ -1354,20 +1361,28 @@ static int bgp_send_open(struct bgp_peer *peer)
     data.hold_time = htons(peer->hold);
     data.identifier = my_address;
 
-    /* construct the param and capability */
-    cap_mp_ipv6.code = BGP_CAP_CODE_MP;
-    cap_mp_ipv6.len = sizeof(mp_ipv6);
-    memcpy(&cap_mp_ipv6.value, &mp_ipv6, cap_mp_ipv6.len);
+    /* if we know peer doesn't support MP (mp_handling == DoesntHandleIPv6Routes)
+       then don't add this parameter */
+    if (peer->mp_handling == HandlingUnknown
+	    || peer->mp_handling == HandleIPv6Routes)
+    {
+	/* construct the param and capability */
+	cap_mp_ipv6.code = BGP_CAP_CODE_MP;
+	cap_mp_ipv6.len = sizeof(mp_ipv6);
+	memcpy(&cap_mp_ipv6.value, &mp_ipv6, cap_mp_ipv6.len);
 
-    param_cap_mp_ipv6.type = BGP_PARAM_TYPE_CAPABILITY;
-    param_cap_mp_ipv6.len = 2 + sizeof(mp_ipv6);
-    memcpy(&param_cap_mp_ipv6.value, &cap_mp_ipv6, param_cap_mp_ipv6.len);
+	param_cap_mp_ipv6.type = BGP_PARAM_TYPE_CAPABILITY;
+	param_cap_mp_ipv6.len = 2 + sizeof(mp_ipv6);
+	memcpy(&param_cap_mp_ipv6.value, &cap_mp_ipv6, param_cap_mp_ipv6.len);
 
-    data.opt_len = 2 + param_cap_mp_ipv6.len;
-    memcpy(&data.opt_params, &param_cap_mp_ipv6, data.opt_len);
+	data.opt_len = 2 + param_cap_mp_ipv6.len;
+	memcpy(&data.opt_params, &param_cap_mp_ipv6, data.opt_len);
+    }
+    else
+	data.opt_len = 0;
 
-    memcpy(peer->outbuf->packet.data, &data, BGP_DATA_OPEN_SIZE);
-    len += BGP_DATA_OPEN_SIZE;
+    memcpy(peer->outbuf->packet.data, &data, BGP_DATA_OPEN_SIZE + data.opt_len);
+    len += BGP_DATA_OPEN_SIZE + data.opt_len;
 
     peer->outbuf->packet.header.len = htons(len);
     peer->outbuf->done = 0;

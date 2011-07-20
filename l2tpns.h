@@ -724,6 +724,7 @@ typedef struct
 		int keepalive;
 		int hold;
 	} neighbour[BGP_NUM_PEERS];
+	struct in6_addr	nexthop6_address;
 #endif
 } configt;
 

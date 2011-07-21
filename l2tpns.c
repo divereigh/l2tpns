@@ -164,8 +164,6 @@ static char *plugin_functions[] = {
 	NULL,
 	"plugin_pre_auth",
 	"plugin_post_auth",
-	"plugin_packet_rx",
-	"plugin_packet_tx",
 	"plugin_timer",
 	"plugin_new_session",
 	"plugin_kill_session",

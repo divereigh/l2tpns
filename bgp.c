@@ -260,7 +260,7 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
 	a.code = BGP_PATH_ATTR_CODE_MP_REACH_NLRI;
 	a.data.s.len = 0; /* will be set on UPDATE */
 
-	mp_reach_nlri_partial.afi = htons(AF_INET6);
+	mp_reach_nlri_partial.afi = htons(BGP_MP_AFI_IPv6);
 	mp_reach_nlri_partial.safi = BGP_MP_SAFI_UNICAST;
 	mp_reach_nlri_partial.reserved = 0;
 	mp_reach_nlri_partial.next_hop_len = 16;
@@ -286,7 +286,7 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
 	a.code = BGP_PATH_ATTR_CODE_MP_UNREACH_NLRI;
 	a.data.e.len = 0; /* will be set on UPDATE */
 
-	mp_unreach_nlri_partial.afi = htons(AF_INET6);
+	mp_unreach_nlri_partial.afi = htons(BGP_MP_AFI_IPv6);
 	mp_unreach_nlri_partial.safi = BGP_MP_SAFI_UNICAST;
 
 	memcpy(&a.data.e.value, &mp_unreach_nlri_partial,
@@ -1247,7 +1247,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 
 		    mp_cap = (struct bgp_mp_cap_param *)&capability->value;
 		    /* the only <AFI, SAFI> tuple we support */
-		    if (ntohs(mp_cap->afi) != AF_INET6 && mp_cap->safi != BGP_MP_SAFI_UNICAST)
+		    if (ntohs(mp_cap->afi) != BGP_MP_AFI_IPv6 && mp_cap->safi != BGP_MP_SAFI_UNICAST)
 		    {
 			LOG(4, 0, 0, "Unsupported multiprotocol AFI %d and SAFI %d from BGP peer %s\n",
 			    mp_cap->afi, mp_cap->safi, peer->name);
@@ -1346,7 +1346,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 static int bgp_send_open(struct bgp_peer *peer)
 {
     struct bgp_data_open data;
-    struct bgp_mp_cap_param mp_ipv6 = { htons(AF_INET6), 0, BGP_MP_SAFI_UNICAST };
+    struct bgp_mp_cap_param mp_ipv6 = { htons(BGP_MP_AFI_IPv6), 0, BGP_MP_SAFI_UNICAST };
     struct bgp_capability cap_mp_ipv6;
     struct bgp_opt_param param_cap_mp_ipv6;
     uint16_t len = sizeof(peer->outbuf->packet.header);

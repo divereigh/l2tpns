@@ -67,6 +67,10 @@ struct bgp_mp_cap_param {
     uint8_t safi;
 } __attribute__ ((packed));
 
+/* bgp_mp_cap_param.afi */
+#define BGP_MP_AFI_RESERVED	0
+#define BGP_MP_AFI_IPv4		1
+#define BGP_MP_AFI_IPv6		2
 /* bgp_mp_cap_param.safi */
 #define BGP_MP_SAFI_UNICAST	1
 #define BGP_MP_SAFI_MULTICAST	2

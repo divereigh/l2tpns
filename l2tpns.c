@@ -3564,7 +3564,8 @@ static void mainloop(void)
 		if (config->neighbour[i].name[0])
 			bgp_start(&bgp_peers[i], config->neighbour[i].name,
 				config->neighbour[i].as, config->neighbour[i].keepalive,
-				config->neighbour[i].hold, 0); /* 0 = routing disabled */
+				config->neighbour[i].hold, config->neighbour[i].update_source,
+				0); /* 0 = routing disabled */
 	}
 #endif /* BGP */
 

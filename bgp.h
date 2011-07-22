@@ -152,6 +152,7 @@ struct bgp_buf {
 struct bgp_peer {
     char name[32];			/* peer name */
     in_addr_t addr;			/* peer address */
+    in_addr_t source_addr;		/* our source address */
     int as;				/* AS number */
     int sock;
     enum bgp_state state;		/* FSM state */
@@ -188,7 +189,7 @@ extern int bgp_configured;
 /* actions */
 int bgp_setup(int as);
 int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
-    int hold, int enable);
+    int hold, struct in_addr update_source, int enable);
 
 void bgp_stop(struct bgp_peer *peer);
 void bgp_halt(struct bgp_peer *peer);

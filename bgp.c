@@ -95,7 +95,7 @@ int bgp_setup(int as)
 
 /* start connection with a peer */
 int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
-    int hold, int enable)
+    int hold, struct in_addr update_source, int enable)
 {
     struct hostent *h;
     int ibgp;
@@ -124,6 +124,7 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
     }
 
     memcpy(&peer->addr, h->h_addr, sizeof(peer->addr));
+    peer->source_addr = update_source.s_addr;
     peer->as = as > 0 ? as : our_as;
     ibgp = peer->as == our_as;
 
@@ -696,6 +697,7 @@ static int bgp_connect(struct bgp_peer *peer)
 {
     static int bgp_port = 0;
     struct sockaddr_in addr;
+    struct sockaddr_in source_addr;
     struct epoll_event ev;
 
     if (!bgp_port)
@@ -726,6 +728,19 @@ static int bgp_connect(struct bgp_peer *peer)
 
     /* set to non-blocking */
     fcntl(peer->sock, F_SETFL, fcntl(peer->sock, F_GETFL, 0) | O_NONBLOCK);
+
+    /* set source address */
+    memset(&source_addr, 0, sizeof(source_addr));
+    source_addr.sin_family = AF_INET;
+    source_addr.sin_addr.s_addr = peer->source_addr; /* defaults to INADDR_ANY */
+    if (bind(peer->sock, (struct sockaddr *) &source_addr, sizeof(source_addr)) < 0)
+    {
+	LOG(1, 0, 0, "Can't set source address to %s: %s\n",
+	    inet_ntoa(source_addr.sin_addr), strerror(errno));
+
+	bgp_set_retry(peer);
+	return 0;
+    }
 
     /* try connect */
     memset(&addr, 0, sizeof(addr));

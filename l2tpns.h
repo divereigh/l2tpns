@@ -723,6 +723,7 @@ typedef struct
 	    	uint16_t as;
 		int keepalive;
 		int hold;
+		struct in_addr update_source;
 	} neighbour[BGP_NUM_PEERS];
 #endif
 } configt;

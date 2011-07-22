@@ -1038,6 +1038,11 @@ static int cmd_show_run(struct cli_def *cli, char *command, char **argv, int arg
 				h = BGP_HOLD_TIME;
 
 			cli_print(cli, " neighbour %s timers %d %d", config->neighbour[i].name, k, h);
+
+			if (config->neighbour[i].update_source.s_addr != INADDR_ANY)
+				cli_print(cli, " neighbour %s update-source %s",
+						config->neighbour[i].name,
+						inet_ntoa(config->neighbour[i].update_source));
 		}
 	}
 #endif
@@ -2064,6 +2069,7 @@ static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **a
 			return cli_arg_help(cli, 0,
 				"remote-as", "Set remote autonomous system number",
 				"timers",    "Set timers",
+				"update-source",    "Set source address to use for the BGP session",
 				NULL);
 
 		default:
@@ -2081,6 +2087,9 @@ static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **a
 				if (argc == 5 && !argv[4][1])
 					return cli_arg_help(cli, 1, NULL);
 			}
+
+			if (MATCH("update-source", argv[1]))
+				return cli_arg_help(cli, argc > 3, "A.B.C.D", "Source IP address", NULL);
 
 			return CLI_OK;
 		}
@@ -2118,9 +2127,30 @@ static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **a
 			snprintf(config->neighbour[i].name, sizeof(config->neighbour[i].name), "%s", argv[0]);
 			config->neighbour[i].keepalive = -1;
 			config->neighbour[i].hold = -1;
+			config->neighbour[i].update_source.s_addr = INADDR_ANY;
 		}
 
 		config->neighbour[i].as = as;
+		return CLI_OK;
+	}
+
+	if (MATCH("update-source", argv[1]))
+	{
+		struct in_addr addr;
+
+		if (!config->neighbour[i].name[0])
+		{
+			cli_error(cli, "Specify remote-as first");
+			return CLI_OK;
+		}
+
+		if (!inet_aton(argv[2], &addr))
+		{
+			cli_error(cli, "Cannot parse IP \"%s\"", argv[2]);
+			return CLI_OK;
+		}
+
+		config->neighbour[i].update_source = addr;
 		return CLI_OK;
 	}
 

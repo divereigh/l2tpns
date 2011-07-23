@@ -1011,7 +1011,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 	    if (notification->error_code == BGP_ERR_CEASE)
 	    {
 		LOG(4, 0, 0, "BGP peer %s sent CEASE\n", peer->name);
-		bgp_restart(peer);
+		bgp_set_retry(peer);
 		return 0;
 	    }
 

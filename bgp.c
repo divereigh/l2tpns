@@ -556,7 +556,8 @@ int bgp_add_route6(struct in6_addr ip, int prefixlen)
 
     /* flag established peers for update */
     for (i = 0; i < BGP_NUM_PEERS; i++)
-	if (bgp_peers[i].state == Established)
+	if (bgp_peers[i].state == Established
+		&& bgp_peers[i].mp_handling == HandleIPv6Routes)
 	    bgp_peers[i].update_routes6 = 1;
 
     LOG(4, 0, 0, "Registered BGP route %s/%d\n",
@@ -656,7 +657,8 @@ int bgp_del_route6(struct in6_addr ip, int prefixlen)
 
     /* flag established peers for update */
     for (i = 0; i < BGP_NUM_PEERS; i++)
-	if (bgp_peers[i].state == Established)
+	if (bgp_peers[i].state == Established
+		&& bgp_peers[i].mp_handling == HandleIPv6Routes)
 	    bgp_peers[i].update_routes6 = 1;
 
     LOG(4, 0, 0, "Removed BGP route %s/%d\n",
@@ -1185,7 +1187,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 		    param_offset < data.opt_len;
 		    param_offset += 2 + param->len)
 	    {
-		param = (struct bgp_opt_param *)(&data.opt_params + param_offset);
+		param = (struct bgp_opt_param *)((char *)&data.opt_params + param_offset);
 
 		/* sensible check */
 		if (data.opt_len - param_offset < 2
@@ -1210,11 +1212,8 @@ static int bgp_handle_input(struct bgp_peer *peer)
 
 		capabilities_len = param->len;
 		capabilities = (char *)&param->value;
-	    }
 
-	    /* look for BGP multiprotocol capability */
-	    if (capabilities)
-	    {
+		/* look for BGP multiprotocol capability */
 		for (capability_offset = 0;
 			capability_offset < capabilities_len;
 			capability_offset += 2 + capability->len)
@@ -1258,8 +1257,17 @@ static int bgp_handle_input(struct bgp_peer *peer)
 			continue;
 		    }
 
+		    /* yes it can! */
 		    peer->mp_handling = HandleIPv6Routes;
 		}
+	    }
+
+	    if (peer->mp_handling != HandleIPv6Routes)
+	    {
+		peer->mp_handling = DoesntHandleIPv6Routes;
+		if (config->ipv6_prefix.s6_addr[0])
+		    LOG(1, 0, 0, "Warning: BGP peer %s doesn't handle IPv6 prefixes updates\n",
+			    peer->name);
 	    }
 
 	    /* next transition requires an exchange of keepalives */
@@ -1363,8 +1371,9 @@ static int bgp_send_open(struct bgp_peer *peer)
 
     /* if we know peer doesn't support MP (mp_handling == DoesntHandleIPv6Routes)
        then don't add this parameter */
-    if (peer->mp_handling == HandlingUnknown
-	    || peer->mp_handling == HandleIPv6Routes)
+    if (config->ipv6_prefix.s6_addr[0]
+	    && (peer->mp_handling == HandlingUnknown
+		|| peer->mp_handling == HandleIPv6Routes))
     {
 	/* construct the param and capability */
 	cap_mp_ipv6.code = BGP_CAP_CODE_MP;

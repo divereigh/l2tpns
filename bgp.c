@@ -49,8 +49,6 @@ static int bgp_send_update(struct bgp_peer *peer);
 static int bgp_send_update6(struct bgp_peer *peer);
 static int bgp_send_notification(struct bgp_peer *peer, uint8_t code,
     uint8_t subcode);
-static int bgp_send_notification_full(struct bgp_peer *peer, uint8_t code,
-    uint8_t subcode, char *notification_data, uint16_t data_len);
 
 static uint16_t our_as;
 static struct bgp_route_list *bgp_routes = 0;
@@ -1238,8 +1236,6 @@ static int bgp_handle_input(struct bgp_peer *peer)
 			LOG(4, 0, 0, "Unsupported Capability code %d from BGP peer %s\n",
 			    capability->code, peer->name);
 
-			bgp_send_notification_full(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP,
-				(char *)capability, 2 + capability->len);
 			/* we don't terminate, still; we just jump to the next one */
 			continue;
 		    }
@@ -1251,8 +1247,6 @@ static int bgp_handle_input(struct bgp_peer *peer)
 			LOG(4, 0, 0, "Unsupported multiprotocol AFI %d and SAFI %d from BGP peer %s\n",
 			    mp_cap->afi, mp_cap->safi, peer->name);
 
-			bgp_send_notification_full(peer, BGP_ERR_OPEN, BGP_ERR_OPN_UNSUP_CAP,
-				(char *)capability, 2 + capability->len);
 			/* we don't terminate, still; we just jump to the next one */
 			continue;
 		    }
@@ -1723,12 +1717,6 @@ static int bgp_send_update6(struct bgp_peer *peer)
 static int bgp_send_notification(struct bgp_peer *peer, uint8_t code,
     uint8_t subcode)
 {
-    return bgp_send_notification_full(peer, code, subcode, NULL, 0);
-}
-
-static int bgp_send_notification_full(struct bgp_peer *peer, uint8_t code,
-    uint8_t subcode, char *notification_data, uint16_t data_len)
-{
     struct bgp_data_notification data;
     uint16_t len = 0;
 
@@ -1737,9 +1725,6 @@ static int bgp_send_notification_full(struct bgp_peer *peer, uint8_t code,
 
     data.error_subcode = subcode;
     len += sizeof(data.error_code);
-
-    memcpy(data.data, notification_data, data_len);
-    len += data_len;
 
     memset(peer->outbuf->packet.header.marker, 0xff,
 	sizeof(peer->outbuf->packet.header.marker));

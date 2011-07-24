@@ -157,6 +157,7 @@ config_descriptt config_values[] = {
 	CONFIG("cluster_hb_timeout", cluster_hb_timeout, INT),
  	CONFIG("cluster_master_min_adv", cluster_master_min_adv, INT),
 	CONFIG("ipv6_prefix", ipv6_prefix, IPv6),
+	CONFIG("cli_bind_address", cli_bind_address, IPv4),
 	{ NULL, 0, 0, 0 },
 };
 

@@ -283,6 +283,7 @@ void init_cli(char *hostname)
 		fcntl(clifd, F_SETFL, flags | O_NONBLOCK);
 	}
 	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = config->cli_bind_address; /* defaults to INADDR_ANY */
 	addr.sin_port = htons(23);
 	if (bind(clifd, (void *) &addr, sizeof(addr)) < 0)
 	{

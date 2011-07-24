@@ -712,6 +712,7 @@ typedef struct
 
 	int		cluster_master_min_adv;		// Master advertises routes while the number of up to date
 							// slaves is less than this value.
+	in_addr_t	cli_bind_address;		// bind address for CLI
 	// Guest change
 	char            guest_user[MAXUSER];            // Guest account username
 

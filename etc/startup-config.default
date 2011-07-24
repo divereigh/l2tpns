@@ -54,7 +54,7 @@ set accounting_dir "/var/run/l2tpns/acct"
 #set bind_address 1.1.1.1
 
 # Listen address for CLI
-#set cli_bind_address 1.1.1.1
+#set cli_bind_address 127.0.0.1
 
 # Send a gratiuitous ARP for bind address
 #set send_garp no

@@ -1665,10 +1665,19 @@ static int bgp_send_update6(struct bgp_peer *peer)
     if (!(unf_len || add))
 	return 1;
 
-    /* go back and insert MP unf_len */
-    unf_len += sizeof(struct bgp_attr_mp_unreach_nlri_partial);
-    unf_len = htons(unf_len);
-    memcpy(&unreach_len, &unf_len, sizeof(unf_len));
+    if (unf_len)
+    {
+	/* go back and insert MP unf_len */
+	unf_len += sizeof(struct bgp_attr_mp_unreach_nlri_partial);
+	unf_len = htons(unf_len);
+	memcpy(unreach_len, &unf_len, sizeof(unf_len));
+    }
+    else
+    {
+	/* we can remove this attribute, then */
+	data -= BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+	len -= BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+    }
 
     if (add)
     {
@@ -1690,9 +1699,9 @@ static int bgp_send_update6(struct bgp_peer *peer)
 		BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE);
 	/* with proper len */
 	reach_len = BGP_IP_PREFIX_SIZE(add->dest);
-	data[2] = reach_len;
-	data += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
-	len += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+	data[2] = sizeof(struct bgp_attr_mp_reach_nlri_partial) + reach_len;
+	data += BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE;
+	len += BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE;
 
 	memcpy(data, &add->dest, reach_len);
 	data += reach_len;

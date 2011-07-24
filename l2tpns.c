@@ -3395,35 +3395,36 @@ static int still_busy(void)
 	static clockt last_talked = 0;
 	static clockt start_busy_wait = 0;
 
-	if (!config->cluster_iam_master)
-	{
 #ifdef BGP
-		static time_t stopped_bgp = 0;
-	    	if (bgp_configured)
+	static time_t stopped_bgp = 0;
+	if (bgp_configured)
+	{
+		if (!stopped_bgp)
 		{
-			if (!stopped_bgp)
+			LOG(1, 0, 0, "Shutting down in %d seconds, stopping BGP...\n", QUIT_DELAY);
+
+			for (i = 0; i < BGP_NUM_PEERS; i++)
+				if (bgp_peers[i].state == Established)
+					bgp_stop(&bgp_peers[i]);
+
+			stopped_bgp = time_now;
+
+			if (!config->cluster_iam_master)
 			{
-			    	LOG(1, 0, 0, "Shutting down in %d seconds, stopping BGP...\n", QUIT_DELAY);
-
-				for (i = 0; i < BGP_NUM_PEERS; i++)
-					if (bgp_peers[i].state == Established)
-						bgp_stop(&bgp_peers[i]);
-
-				stopped_bgp = time_now;
-
 				// we don't want to become master
 				cluster_send_ping(0);
 
 				return 1;
 			}
-
-			if (time_now < (stopped_bgp + QUIT_DELAY))
-				return 1;
 		}
+
+		if (!config->cluster_iam_master && time_now < (stopped_bgp + QUIT_DELAY))
+			return 1;
+	}
 #endif /* BGP */
 
+	if (!config->cluster_iam_master)
 		return 0;
-	}
 
 	if (main_quit == QUIT_SHUTDOWN)
 	{

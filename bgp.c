@@ -1303,7 +1303,7 @@ static int bgp_handle_input(struct bgp_peer *peer)
 	    {
 		LOG(4, 0, 0, "BGP peer %s doesn't support BGP Capabilities\n", peer->name);
 		peer->mp_handling = DoesntHandleIPv6Routes;
-		bgp_restart(peer);
+		bgp_set_retry(peer);
 		return 0;
 	    }
 

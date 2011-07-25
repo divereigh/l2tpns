@@ -7,6 +7,9 @@ set log_file "/var/log/l2tpns"
 # Write pid to this file
 set pid_file "/var/run/l2tpns.pid"
 
+# This host name, if different from the OS one
+#set hostname "localhost"
+
 # Shared secret with LAC
 set l2tp_secret "secret"
 

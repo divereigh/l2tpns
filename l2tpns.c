@@ -69,7 +69,7 @@ int rand_fd = -1;		// Random data source
 int cluster_sockfd = -1;	// Intra-cluster communications socket.
 int epollfd = -1;		// event polling
 time_t basetime = 0;		// base clock
-char hostname[1000] = "";	// us.
+char hostname[MAXHOSTNAME] = "";	// us.
 static int tunidx;		// ifr_ifindex of tun device
 static int syslog_log = 0;	// are we logging to syslog
 static FILE *log_stream = 0;	// file handle for direct logging (i.e. direct into file, not via syslog).
@@ -158,6 +158,7 @@ config_descriptt config_values[] = {
  	CONFIG("cluster_master_min_adv", cluster_master_min_adv, INT),
 	CONFIG("ipv6_prefix", ipv6_prefix, IPv6),
 	CONFIG("cli_bind_address", cli_bind_address, IPv4),
+	CONFIG("hostname", hostname, STRING),
 	{ NULL, 0, 0, 0 },
 };
 
@@ -4068,9 +4069,14 @@ static void initdata(int optdebug, char *optconfig)
 
 	if (!*hostname)
 	{
-		// Grab my hostname unless it's been specified
-		gethostname(hostname, sizeof(hostname));
-		stripdomain(hostname);
+		if (!*config->hostname)
+		{
+			// Grab my hostname unless it's been specified
+			gethostname(hostname, sizeof(hostname));
+			stripdomain(hostname);
+		}
+		else
+			strcpy(hostname, config->hostname);
 	}
 
 	_statistics->start_time = _statistics->last_reset = time(NULL);

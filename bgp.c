@@ -1714,7 +1714,7 @@ static int bgp_send_update6(struct bgp_peer *peer)
 
     /* go back and insert attr_len */
     attr_len = htons(len - 4);
-    memcpy(&peer->outbuf->packet.data + 2, &attr_len, sizeof(attr_len));
+    memcpy((char *)&peer->outbuf->packet.data + 2, &attr_len, sizeof(attr_len));
 
     peer->outbuf->packet.header.len = htons(len);
     peer->outbuf->done = 0;

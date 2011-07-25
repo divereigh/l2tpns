@@ -1589,7 +1589,7 @@ static int bgp_send_update6(struct bgp_peer *peer)
     /* copy usual attributes */
     memcpy(data, peer->path_attrs, peer->path_attr_len_without_nexthop);
     data += peer->path_attr_len_without_nexthop;
-    len += peer->path_attr_len_without_nexthop;
+    attr_len = peer->path_attr_len_without_nexthop;
 
     /* copy MP unreachable NLRI heading */
     memcpy(data, peer->mp_unreach_nlri_partial,
@@ -1597,7 +1597,7 @@ static int bgp_send_update6(struct bgp_peer *peer)
     /* remember where to update this attr len */
     unreach_len_pos = data + 2;
     data += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
-    len += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+    attr_len += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
 
     peer->update_routes6 = 0; /* tentatively clear */
 
@@ -1620,7 +1620,7 @@ static int bgp_send_update6(struct bgp_peer *peer)
 	    memcpy(data, &tmp->dest, s);
 	    data += s;
 	    unreach_len += s;
-	    len += s;
+	    attr_len += s;
 
 	    LOG(5, 0, 0, "Withdrawing route %s/%d from BGP peer %s\n",
 		inet_ntop(AF_INET6, &tmp->dest.prefix, ipv6addr, INET6_ADDRSTRLEN),
@@ -1676,7 +1676,7 @@ static int bgp_send_update6(struct bgp_peer *peer)
     {
 	/* we can remove this attribute, then */
 	data -= BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
-	len -= BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
+	attr_len -= BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
     }
 
     if (add)
@@ -1701,19 +1701,22 @@ static int bgp_send_update6(struct bgp_peer *peer)
 	reach_len = BGP_IP_PREFIX_SIZE(add->dest);
 	data[2] = sizeof(struct bgp_attr_mp_reach_nlri_partial) + reach_len;
 	data += BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE;
-	len += BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE;
+	attr_len += BGP_PATH_ATTR_MP_REACH_NLRI_PARTIAL_SIZE;
 
 	memcpy(data, &add->dest, reach_len);
 	data += reach_len;
-	len += reach_len;
+	attr_len += reach_len;
 
 	LOG(5, 0, 0, "Advertising route %s/%d to BGP peer %s\n",
 	    inet_ntop(AF_INET6, &add->dest.prefix, ipv6addr, INET6_ADDRSTRLEN),
 	    add->dest.len, peer->name);
     }
 
+    /* update len with attributes we added */
+    len += attr_len;
+
     /* go back and insert attr_len */
-    attr_len = htons(len - 4);
+    attr_len = htons(attr_len);
     memcpy((char *)&peer->outbuf->packet.data + 2, &attr_len, sizeof(attr_len));
 
     peer->outbuf->packet.header.len = htons(len);

@@ -1555,9 +1555,9 @@ static int bgp_send_update(struct bgp_peer *peer)
 /* send/buffer UPDATE message for IPv6 routes */
 static int bgp_send_update6(struct bgp_peer *peer)
 {
-    uint16_t unf_len = 0;
     uint16_t attr_len;
-    char *unreach_len;
+    uint16_t unreach_len = 0;
+    char *unreach_len_pos;
     uint8_t reach_len;
     uint16_t len = sizeof(peer->outbuf->packet.header);
     struct bgp_route6_list *have = peer->routes6;
@@ -1580,11 +1580,11 @@ static int bgp_send_update6(struct bgp_peer *peer)
 
     peer->outbuf->packet.header.type = BGP_MSG_UPDATE;
 
-    /* insert non-MP unf_len */
-    memcpy(data, &unf_len, sizeof(unf_len));
-    /* skip over attr_len too; will be filled when known */
-    data += sizeof(unf_len) + sizeof(attr_len);
-    len += sizeof(unf_len) + sizeof(attr_len);
+    /* insert non-MP unfeasible routes length */
+    memcpy(data, &unreach_len, sizeof(unreach_len));
+    /* skip over it and attr_len too; it will be filled when known */
+    data += sizeof(unreach_len) + sizeof(attr_len);
+    len += sizeof(unreach_len) + sizeof(attr_len);
 
     /* copy usual attributes */
     memcpy(data, peer->path_attrs, peer->path_attr_len_without_nexthop);
@@ -1595,7 +1595,7 @@ static int bgp_send_update6(struct bgp_peer *peer)
     memcpy(data, peer->mp_unreach_nlri_partial,
 	    BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE);
     /* remember where to update this attr len */
-    unreach_len = data + 2;
+    unreach_len_pos = data + 2;
     data += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
     len += BGP_PATH_ATTR_MP_UNREACH_NLRI_PARTIAL_SIZE;
 
@@ -1619,7 +1619,7 @@ static int bgp_send_update6(struct bgp_peer *peer)
 	    s = BGP_IP_PREFIX_SIZE(tmp->dest);
 	    memcpy(data, &tmp->dest, s);
 	    data += s;
-	    unf_len += s;
+	    unreach_len += s;
 	    len += s;
 
 	    LOG(5, 0, 0, "Withdrawing route %s/%d from BGP peer %s\n",
@@ -1662,15 +1662,15 @@ static int bgp_send_update6(struct bgp_peer *peer)
 	peer->update_routes6 = 1; /* more to do */
 
     /* anything changed? */
-    if (!(unf_len || add))
+    if (!(unreach_len || add))
 	return 1;
 
-    if (unf_len)
+    if (unreach_len)
     {
-	/* go back and insert MP unf_len */
-	unf_len += sizeof(struct bgp_attr_mp_unreach_nlri_partial);
-	unf_len = htons(unf_len);
-	memcpy(unreach_len, &unf_len, sizeof(unf_len));
+	/* go back and insert MP unreach_len */
+	unreach_len += sizeof(struct bgp_attr_mp_unreach_nlri_partial);
+	unreach_len = htons(unreach_len);
+	memcpy(unreach_len_pos, &unreach_len, sizeof(unreach_len));
     }
     else
     {

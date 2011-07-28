@@ -41,6 +41,12 @@ set radius_secret "secret"
 # Allow multiple logins for the same username
 #set allow_duplicate_users no
 
+# Kill timedout sessions ? (default yes)
+#set kill_timedout_sessions no
+
+# Allow multiple logins for specific username
+#set guest_account ""
+
 # Write usage accounting files into specified directory
 set accounting_dir "/var/run/l2tpns/acct"
 
@@ -58,9 +64,6 @@ set accounting_dir "/var/run/l2tpns/acct"
 
 # Number of buckets to allocate for throttling
 #set throttle_buckets 3000
-
-# If set to anything other than 0, setuid when initialised.
-#set setuid 0
 
 # If set to true, dump current speed to stderr every second
 #set dump_speed no
@@ -95,6 +98,9 @@ set accounting_dir "/var/run/l2tpns/acct"
 
 # Minimum number of slaves before master withdraws routes
 #set cluster_master_min_adv 1
+
+# IPv6 address prefix
+#set ipv6_prefix ::
 
 # Drop/kill sessions
 #load plugin "sessionctl"

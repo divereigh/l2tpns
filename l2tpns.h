@@ -1,5 +1,5 @@
 // L2TPNS Global Stuff
-// $Id: l2tpns.h,v 1.113.2.3 2006/12/02 14:09:14 bodea Exp $
+// $Id: l2tpns.h,v 1.121 2009/12/08 14:49:28 bodea Exp $
 
 #ifndef __L2TPNS_H__
 #define __L2TPNS_H__
@@ -14,10 +14,13 @@
 #include <sys/types.h>
 #include <libcli.h>
 
-#define VERSION	"2.1.21"
+#define VERSION	"2.2.0"
 
 // Limits
 #define MAXTUNNEL	500		// could be up to 65535
+#define MAXBUNDLE	300		// could be up to 65535
+#define MAXBUNDLESES	12		// Maximum number of member links in bundle
+#define MAXADDRESS	20		// Maximum length for the Endpoint Discrminiator address
 #define MAXSESSION	60000		// could be up to 65535
 #define MAXTBFS		6000		// Maximum token bucket filters. Might need up to 2 * session.
 
@@ -43,9 +46,19 @@
 #define MAXIPPOOL	131072		// max number of ip addresses in pool
 #define RINGBUFFER_SIZE	10000		// Number of ringbuffer entries to allocate
 #define MAX_LOG_LENGTH	512		// Maximum size of log message
-#define ECHO_TIMEOUT	60		// Time between last packet sent and LCP ECHO generation
-#define IDLE_TIMEOUT	240		// Time between last packet sent and LCP ECHO generation
+#define ECHO_TIMEOUT	10		// Time between last packet sent and LCP ECHO generation
+#define IDLE_TIMEOUT	240		// Time between last packet seen and session shutdown
 #define BUSY_WAIT_TIME	3000		// 5 minutes in 1/10th seconds to wait for radius to cleanup on shutdown
+
+#define MP_BEGIN        0x80            // This value is used when (b)egin bit is set in MP header
+#define MP_END          0x40            // This value is used when (e)nd bit is set in MP header
+#define MP_BOTH_BITS    0xC0            // This value is used when both bits (begin and end) are set in MP header
+
+#define MINFRAGLEN	64		// Minumum fragment length
+#define MAXFRAGLEN	750		// Maximum length for Multilink fragment (MTU / 2 sessions)
+#define MAXFRAGNUM	128		// Maximum number of Multilink fragment in a bundle (must be in the form of 2^X)
+					// it's not expected to have a space for more than 10 unassembled packets = 10 * MAXBUNDLESES
+#define	MAXFRAGNUM_MASK	127		// Must be equal to MAXFRAGNUM-1
 
 // Constants
 #ifndef ETCDIR
@@ -186,6 +199,7 @@ enum {
 
 // Types
 typedef uint16_t sessionidt;
+typedef uint16_t bundleidt;
 typedef uint16_t tunnelidt;
 typedef uint32_t clockt;
 typedef uint8_t hasht[16];
@@ -231,6 +245,20 @@ typedef struct controls		// control message
 }
 controlt;
 
+typedef struct {
+	uint8_t length;			// Endpoint Discriminator length
+	uint8_t addr_class;		// Endpoint Discriminator class
+	uint8_t address[MAXADDRESS];	// Endpoint Discriminator address
+} epdist;
+
+typedef struct {
+	sessionidt sid;			// Fragment originating session
+	uint8_t	flags;			// MP frame flags
+	uint32_t seq;			// fragment seq num
+        uint16_t length;                // Fragment length
+        uint8_t data[MAXFRAGLEN];       // Fragment data
+} fragmentt;
+
 typedef struct
 {
 	sessionidt next;		// next session in linked list
@@ -261,7 +289,10 @@ typedef struct
 	uint16_t mru;			// maximum receive unit
 	clockt opened;			// when started
 	clockt die;			// being closed, when to finally free
+	uint32_t session_timeout;	// Maximum session time in seconds
+ 	uint32_t idle_timeout;		// Maximum idle time in seconds
 	time_t last_packet;		// Last packet from the user (used for idle timeouts)
+ 	time_t last_data;		// Last data packet to/from the user (used for idle timeouts)
 	in_addr_t dns1, dns2;		// DNS servers
 	routet route[MAXROUTE];		// static routes
 	uint16_t tbf_in;		// filter bucket for throttling in from the user.
@@ -273,6 +304,11 @@ typedef struct
 	char calling[MAXTEL];		// calling number
 	uint32_t tx_connect_speed;
 	uint32_t rx_connect_speed;
+	clockt timeout;                 // Session timeout
+        uint32_t mrru;                  // Multilink Max-Receive-Reconstructed-Unit
+        uint8_t mssf;                   // Multilink Short Sequence Number Header Format
+        epdist epdis;                   // Multilink Endpoint Discriminator
+        bundleidt bundle;               // Multilink Bundle Identifier
 	in_addr_t snoop_ip;		// Interception destination IP
 	uint16_t snoop_port;		// Interception destination port
 	uint8_t walled_garden;		// is this session gardened?
@@ -281,6 +317,36 @@ typedef struct
 	char reserved_3[11];		// Space to expand structure without changing HB_VERSION
 }
 sessiont;
+
+typedef struct
+{
+        int state;                              // current state (bundlestate enum)
+        uint32_t seq_num_t;                     // Sequence Number (transmission)
+        uint32_t timeout;                       // Session-Timeout for bundle
+	uint32_t max_seq;			// Max value of sequence number field
+        uint8_t num_of_links;                   // Number of links joint to this bundle
+        uint32_t online_time;                   // The time this bundle is online
+        clockt last_check;                      // Last time the timeout is checked
+        uint32_t mrru;                          // Multilink Max-Receive-Reconstructed-Unit
+        uint8_t mssf;                           // Multilink Short Sequence Number Header Format
+        epdist epdis;                           // Multilink Endpoint Discriminator
+        char user[MAXUSER];                     // Needed for matching member links
+        sessionidt current_ses;                 // Current session to use for sending (used in RR load-balancing)
+        sessionidt members[MAXBUNDLESES];       // Array for member links sessions
+}
+bundlet;
+
+typedef struct
+{
+        fragmentt fragment[MAXFRAGNUM];
+        uint8_t reassembled_frame[MAXETHER];    // The reassembled frame
+        uint16_t re_frame_len;                  // The reassembled frame length
+	uint16_t re_frame_begin_index, re_frame_end_index;	// reassembled frame begin index, end index respectively
+	uint16_t start_index, end_index;	// start and end sequence numbers available on the fragments array respectively
+	uint32_t M;				// Minumum frame sequence number received over all bundle members
+	uint32_t start_seq;                     // Last received frame sequence number (bearing B bit)
+}
+fragmentationt;
 
 #define AUTHPAP		1	// allow PAP
 #define AUTHCHAP	2	// allow CHAP
@@ -311,6 +377,15 @@ typedef struct
 	// our MRU
 	uint16_t ppp_mru;
 
+	// our MRRU
+	uint16_t mp_mrru;
+
+	// our mssf
+	uint16_t mp_mssf;
+
+	// our Endpoint Discriminator
+	in_addr_t mp_epdis;
+
 	// DoS prevention
 	clockt last_packet_out;
 	uint32_t packets_out;
@@ -324,6 +399,9 @@ typedef struct
 
 	// last LCP Echo
 	time_t last_echo;
+
+	// Last Multilink frame sequence number received
+	uint32_t last_seq;
 } sessionlocalt;
 
 // session flags
@@ -409,6 +487,23 @@ enum
 
 enum
 {
+	BUNDLEFREE,		// Not in use
+	BUNDLEOPEN,		// Active bundle
+	BUNDLEUNDEF,		// Undefined
+};
+
+enum
+{
+	NULLCLASS = 0,		//End Point Discriminator classes
+	LOCALADDR,
+	IPADDR,
+	IEEEMACADDR,
+	PPPMAGIC,
+	PSNDN,
+};
+
+enum
+{
 	RADIUSNULL,             // Not in use
 	RADIUSCHAP,             // sending CHAP down PPP
 	RADIUSAUTH,             // sending auth to RADIUS server
@@ -416,6 +511,7 @@ enum
 	RADIUSSTOP,             // sending stop accounting to RADIUS server
 	RADIUSINTERIM,		// sending interim accounting to RADIUS server
 	RADIUSWAIT,		// waiting timeout before available, in case delayed replies
+	RADIUSJUSTAUTH,         // sending auth to RADIUS server, just authentication, no ip assigning
 };
 
 struct Tstats
@@ -554,13 +650,16 @@ typedef struct
 	uint16_t	radiusport[MAXRADSERVER];	// radius base ports
 	uint8_t		numradiusservers;		// radius server count
 
-	uint16_t	radius_dae_port;		// local port for radius dae
+	uint16_t	radius_dae_port;		// port for radius DAE
+	uint16_t	radius_bind_min;		// port range for udp sockets used to send/recv radius packets
+	uint16_t	radius_bind_max;
 
 	char		radius_authtypes_s[32];		// list of valid authentication types (chap, pap) in order of preference
 	int		radius_authtypes;
 	int		radius_authprefer;
 
 	int		allow_duplicate_users;		// allow multiple logins with the same username
+	int		kill_timedout_sessions;		// kill authenticated sessions with "session_timeout == 0"
 
 	in_addr_t	default_dns1, default_dns2;
 
@@ -572,7 +671,6 @@ typedef struct
 	in_addr_t	peer_address;
 	int		send_garp;			// Set to true to garp for vip address on startup
 
-	int		target_uid;
 	int		dump_speed;
 	char		plugins[64][MAXPLUGINS];
 	char		old_plugins[64][MAXPLUGINS];
@@ -583,6 +681,7 @@ typedef struct
 	int		lock_pages;			// Lock pages into memory.
 	int		icmp_rate;			// Max number of ICMP unreachable per second to send
 	int		max_packets;			// DoS prevention: per session limit of packets/0.1s
+	char		epdis_addr[20];			// MP Endpoint Discriminator address
 
 	in_addr_t	cluster_address;		// Multicast address of cluster.
 							// Send to this address to have everyone hear.
@@ -594,8 +693,10 @@ typedef struct
 	int		cluster_seq_number;		// Sequence number of the next heartbeat we'll send out
 							// (or the seq number we're next expecting if we're a slave).
 	int		cluster_undefined_sessions;	// How many sessions we're yet to receive from the master.
+	int		cluster_undefined_bundles;	// How many bundles we're yet to receive from the master.
 	int		cluster_undefined_tunnels;	// How many tunnels we're yet to receive from the master.
 	int		cluster_highest_sessionid;
+	int		cluster_highest_bundleid;
 	int		cluster_highest_tunnelid;
 	clockt		cluster_last_hb;		// Last time we saw a heartbeat from the master.
 	int		cluster_last_hb_ver;		// Heartbeat version last seen from master
@@ -611,6 +712,8 @@ typedef struct
 
 	int		cluster_master_min_adv;		// Master advertises routes while the number of up to date
 							// slaves is less than this value.
+	// Guest change
+	char            guest_user[MAXUSER];            // Guest account username
 
 #ifdef BGP
 #define BGP_NUM_PEERS	2
@@ -727,14 +830,17 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processipv6cp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processipin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
+void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
+void processmpframe(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l, uint8_t extra);
 void processipv6in(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processccp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void sendchap(sessionidt s, tunnelidt t);
-uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype);
+uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype, uint8_t prio, bundleidt bid, uint8_t mp_bits);
 void sendlcp(sessionidt s, tunnelidt t);
 void send_ipin(sessionidt s, uint8_t *buf, int len);
 void sendccp(sessionidt s, tunnelidt t);
 void protoreject(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l, uint16_t proto);
+int join_bundle(sessionidt s);
 
 
 // radius.c
@@ -802,6 +908,7 @@ void host_unreachable(in_addr_t destination, uint16_t id, in_addr_t source, uint
 
 
 extern tunnelt *tunnel;
+extern bundlet *bundle;
 extern sessiont *session;
 extern sessionlocalt *sess_local;
 extern ippoolt *ip_address_pool;

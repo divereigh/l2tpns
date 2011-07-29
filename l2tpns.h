@@ -38,6 +38,7 @@
 #define PPPoE_MRU	1492		// maximum PPPoE MRU (rfc2516: 1500 less PPPoE header (6) and PPP protocol ID (2))
 #define MAXETHER	(MAXMTU+18)	// max packet we try sending to tun
 #define MAXTEL		96		// telephone number
+#define MAXHOSTNAME	256		// hostname
 #define MAXUSER		128		// username
 #define MAXPASS		128		// password
 #define MAXPLUGINS	20		// maximum number of plugins to load
@@ -712,6 +713,8 @@ typedef struct
 
 	int		cluster_master_min_adv;		// Master advertises routes while the number of up to date
 							// slaves is less than this value.
+	in_addr_t	cli_bind_address;		// bind address for CLI
+	char		hostname[MAXHOSTNAME];	// hostname (overridden by -h on command line)
 	// Guest change
 	char            guest_user[MAXUSER];            // Guest account username
 
@@ -723,7 +726,10 @@ typedef struct
 	    	uint16_t as;
 		int keepalive;
 		int hold;
+		struct in_addr update_source;
 	} neighbour[BGP_NUM_PEERS];
+	in_addr_t	nexthop_address;
+	struct in6_addr	nexthop6_address;
 #endif
 } configt;
 

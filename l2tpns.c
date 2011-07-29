@@ -69,7 +69,7 @@ int rand_fd = -1;		// Random data source
 int cluster_sockfd = -1;	// Intra-cluster communications socket.
 int epollfd = -1;		// event polling
 time_t basetime = 0;		// base clock
-char hostname[1000] = "";	// us.
+char hostname[MAXHOSTNAME] = "";	// us.
 static int tunidx;		// ifr_ifindex of tun device
 static int syslog_log = 0;	// are we logging to syslog
 static FILE *log_stream = 0;	// file handle for direct logging (i.e. direct into file, not via syslog).
@@ -157,6 +157,10 @@ config_descriptt config_values[] = {
 	CONFIG("cluster_hb_timeout", cluster_hb_timeout, INT),
  	CONFIG("cluster_master_min_adv", cluster_master_min_adv, INT),
 	CONFIG("ipv6_prefix", ipv6_prefix, IPv6),
+	CONFIG("cli_bind_address", cli_bind_address, IPv4),
+	CONFIG("hostname", hostname, STRING),
+	CONFIG("nexthop_address", nexthop_address, IPv4),
+	CONFIG("nexthop6_address", nexthop6_address, IPv6),
 	{ NULL, 0, 0, 0 },
 };
 
@@ -164,8 +168,6 @@ static char *plugin_functions[] = {
 	NULL,
 	"plugin_pre_auth",
 	"plugin_post_auth",
-	"plugin_packet_rx",
-	"plugin_packet_tx",
 	"plugin_timer",
 	"plugin_new_session",
 	"plugin_kill_session",
@@ -501,7 +503,12 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 		LOG(0, 0, 0, "route6set() error in ioctl: %s\n",
 				strerror(errno));
 
-	// FIXME: need to add BGP routing (RFC2858)
+#ifdef BGP
+	if (add)
+		bgp_add_route6(ip, prefixlen);
+	else
+		bgp_del_route6(ip, prefixlen);
+#endif /* BGP */
 
 	if (s)
 	{
@@ -3397,35 +3404,36 @@ static int still_busy(void)
 	static clockt last_talked = 0;
 	static clockt start_busy_wait = 0;
 
-	if (!config->cluster_iam_master)
-	{
 #ifdef BGP
-		static time_t stopped_bgp = 0;
-	    	if (bgp_configured)
+	static time_t stopped_bgp = 0;
+	if (bgp_configured)
+	{
+		if (!stopped_bgp)
 		{
-			if (!stopped_bgp)
+			LOG(1, 0, 0, "Shutting down in %d seconds, stopping BGP...\n", QUIT_DELAY);
+
+			for (i = 0; i < BGP_NUM_PEERS; i++)
+				if (bgp_peers[i].state == Established)
+					bgp_stop(&bgp_peers[i]);
+
+			stopped_bgp = time_now;
+
+			if (!config->cluster_iam_master)
 			{
-			    	LOG(1, 0, 0, "Shutting down in %d seconds, stopping BGP...\n", QUIT_DELAY);
-
-				for (i = 0; i < BGP_NUM_PEERS; i++)
-					if (bgp_peers[i].state == Established)
-						bgp_stop(&bgp_peers[i]);
-
-				stopped_bgp = time_now;
-
 				// we don't want to become master
 				cluster_send_ping(0);
 
 				return 1;
 			}
-
-			if (time_now < (stopped_bgp + QUIT_DELAY))
-				return 1;
 		}
+
+		if (!config->cluster_iam_master && time_now < (stopped_bgp + QUIT_DELAY))
+			return 1;
+	}
 #endif /* BGP */
 
+	if (!config->cluster_iam_master)
 		return 0;
-	}
 
 	if (main_quit == QUIT_SHUTDOWN)
 	{
@@ -3566,7 +3574,8 @@ static void mainloop(void)
 		if (config->neighbour[i].name[0])
 			bgp_start(&bgp_peers[i], config->neighbour[i].name,
 				config->neighbour[i].as, config->neighbour[i].keepalive,
-				config->neighbour[i].hold, 0); /* 0 = routing disabled */
+				config->neighbour[i].hold, config->neighbour[i].update_source,
+				0); /* 0 = routing disabled */
 	}
 #endif /* BGP */
 
@@ -4067,9 +4076,14 @@ static void initdata(int optdebug, char *optconfig)
 
 	if (!*hostname)
 	{
-		// Grab my hostname unless it's been specified
-		gethostname(hostname, sizeof(hostname));
-		stripdomain(hostname);
+		if (!*config->hostname)
+		{
+			// Grab my hostname unless it's been specified
+			gethostname(hostname, sizeof(hostname));
+			stripdomain(hostname);
+		}
+		else
+			strcpy(hostname, config->hostname);
 	}
 
 	_statistics->start_time = _statistics->last_reset = time(NULL);

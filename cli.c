@@ -283,6 +283,7 @@ void init_cli(char *hostname)
 		fcntl(clifd, F_SETFL, flags | O_NONBLOCK);
 	}
 	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = config->cli_bind_address; /* defaults to INADDR_ANY */
 	addr.sin_port = htons(23);
 	if (bind(clifd, (void *) &addr, sizeof(addr)) < 0)
 	{
@@ -443,6 +444,14 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 			if (session[s].idle_timeout)
 				cli_print(cli, "\tIdle Timeout:\t%u seconds", session[s].idle_timeout - (session[s].last_data ? abs(time_now - session[s].last_data) : 0));
 
+			if (session[s].timeout)
+			{
+				cli_print(cli, "\tRemaining time:\t%u",
+					(session[s].bundle && bundle[session[s].bundle].num_of_links > 1)
+					? (unsigned) (session[s].timeout - bundle[session[s].bundle].online_time)
+					: (unsigned) (session[s].timeout - (time_now - session[s].opened)));
+			}
+
 			cli_print(cli, "\tBytes In/Out:\t%u/%u", session[s].cout, session[s].cin);
 			cli_print(cli, "\tPkts In/Out:\t%u/%u", session[s].pout, session[s].pin);
 			cli_print(cli, "\tMRU:\t\t%d", session[s].mru);
@@ -510,7 +519,7 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 	}
 
 	// Show Summary
-	cli_print(cli, "%5s %4s %-32s %-15s %s %s %s %s %10s %10s %10s %4s %-15s %s",
+	cli_print(cli, "%5s %4s %-32s %-15s %s %s %s %s %10s %10s %10s %4s %10s %-15s %s",
 			"SID",
 			"TID",
 			"Username",
@@ -523,13 +532,20 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 			"downloaded",
 			"uploaded",
 			"idle",
+			"Rem.Time",
 			"LAC",
 			"CLI");
 
 	for (i = 1; i < MAXSESSION; i++)
 	{
+		uint32_t rem_time;
 		if (!session[i].opened) continue;
-		cli_print(cli, "%5d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %-15s %s",
+		if (session[i].bundle && bundle[session[i].bundle].num_of_links > 1)
+			rem_time = session[i].timeout ? (session[i].timeout - bundle[session[i].bundle].online_time) : 0;
+		else
+			rem_time = session[i].timeout ? (session[i].timeout - (time_now-session[i].opened)) : 0;
+
+		cli_print(cli, "%5d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %-15s %s",
 				i,
 				session[i].tunnel,
 				session[i].user[0] ? session[i].user : "*",
@@ -542,6 +558,7 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 				(unsigned long)session[i].cout,
 				(unsigned long)session[i].cin,
 				abs(time_now - (session[i].last_packet ? session[i].last_packet : time_now)),
+				(unsigned long)(rem_time),
 				fmtaddr(htonl(tunnel[ session[i].tunnel ].ip), 1),
 				session[i].calling[0] ? session[i].calling : "*");
 	}
@@ -1022,6 +1039,11 @@ static int cmd_show_run(struct cli_def *cli, char *command, char **argv, int arg
 				h = BGP_HOLD_TIME;
 
 			cli_print(cli, " neighbour %s timers %d %d", config->neighbour[i].name, k, h);
+
+			if (config->neighbour[i].update_source.s_addr != INADDR_ANY)
+				cli_print(cli, " neighbour %s update-source %s",
+						config->neighbour[i].name,
+						inet_ntoa(config->neighbour[i].update_source));
 		}
 	}
 #endif
@@ -2048,6 +2070,7 @@ static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **a
 			return cli_arg_help(cli, 0,
 				"remote-as", "Set remote autonomous system number",
 				"timers",    "Set timers",
+				"update-source",    "Set source address to use for the BGP session",
 				NULL);
 
 		default:
@@ -2065,6 +2088,9 @@ static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **a
 				if (argc == 5 && !argv[4][1])
 					return cli_arg_help(cli, 1, NULL);
 			}
+
+			if (MATCH("update-source", argv[1]))
+				return cli_arg_help(cli, argc > 3, "A.B.C.D", "Source IP address", NULL);
 
 			return CLI_OK;
 		}
@@ -2102,9 +2128,30 @@ static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **a
 			snprintf(config->neighbour[i].name, sizeof(config->neighbour[i].name), "%s", argv[0]);
 			config->neighbour[i].keepalive = -1;
 			config->neighbour[i].hold = -1;
+			config->neighbour[i].update_source.s_addr = INADDR_ANY;
 		}
 
 		config->neighbour[i].as = as;
+		return CLI_OK;
+	}
+
+	if (MATCH("update-source", argv[1]))
+	{
+		struct in_addr addr;
+
+		if (!config->neighbour[i].name[0])
+		{
+			cli_error(cli, "Specify remote-as first");
+			return CLI_OK;
+		}
+
+		if (!inet_aton(argv[2], &addr))
+		{
+			cli_error(cli, "Cannot parse IP \"%s\"", argv[2]);
+			return CLI_OK;
+		}
+
+		config->neighbour[i].update_source = addr;
 		return CLI_OK;
 	}
 

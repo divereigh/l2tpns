@@ -160,6 +160,7 @@ config_descriptt config_values[] = {
 	CONFIG("cli_bind_address", cli_bind_address, IPv4),
 	CONFIG("hostname", hostname, STRING),
 	CONFIG("nexthop_address", nexthop_address, IPv4),
+	CONFIG("nexthop6_address", nexthop6_address, IPv6),
 	{ NULL, 0, 0, 0 },
 };
 
@@ -502,7 +503,12 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 		LOG(0, 0, 0, "route6set() error in ioctl: %s\n",
 				strerror(errno));
 
-	// FIXME: need to add BGP routing (RFC2858)
+#ifdef BGP
+	if (add)
+		bgp_add_route6(ip, prefixlen);
+	else
+		bgp_del_route6(ip, prefixlen);
+#endif /* BGP */
 
 	if (s)
 	{

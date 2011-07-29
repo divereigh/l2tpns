@@ -729,6 +729,7 @@ typedef struct
 		struct in_addr update_source;
 	} neighbour[BGP_NUM_PEERS];
 	in_addr_t	nexthop_address;
+	struct in6_addr	nexthop6_address;
 #endif
 } configt;
 

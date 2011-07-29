@@ -1,3 +1,19 @@
+l2tpns (2.2.1-1fdn1) unstable; urgency=low
+
+  * Version for FDN with features listed below
+  * Add RFC 4760 support
+  * Display session's remainging time in CLI.
+  * Remove no more used plugin function names; fixes a crash.
+  * Add an option to set source address for a BGP session.
+  * Wait before retrying on CEASE.
+  * Stop BGP session even when we are master
+  * Add a cli_bind_address configuration option.
+  * Add an "hostname" config option.
+  * Kill sessions receiving a ConfReq while closing.
+  * Add a config option to set the advertised BGP next hop.
+
+ -- Benjamin Cama <benoar@dolka.fr>  Fri, 29 Jul 2011 14:58:11 +0200
+
 l2tpns (2.2.1-1) unstable; urgency=low
 
   * Updated to latest CVS to date (marked 2.2.x, after a 2.2.0 release, hence

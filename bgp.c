@@ -1361,7 +1361,11 @@ static int bgp_send_open(struct bgp_peer *peer)
     data.version = BGP_VERSION;
     data.as = htons(our_as);
     data.hold_time = htons(peer->hold);
-    data.identifier = my_address;
+    /* use the source IP we use as identifier, if available */
+    if (peer->source_addr != INADDR_ANY)
+	data.identifier = peer->source_addr;
+    else
+	data.identifier = my_address;
 
     /* if we know peer doesn't support MP (mp_handling == DoesntHandleIPv6Routes)
        then don't add this parameter */

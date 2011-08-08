@@ -35,6 +35,7 @@ static struct bgp_route_list *bgp_insert_route(struct bgp_route_list *head,
 static struct bgp_route6_list *bgp_insert_route6(struct bgp_route6_list *head,
     struct bgp_route6_list *new);
 
+static void bgp_process_timers(struct bgp_peer *peer);
 static void bgp_free_routes(struct bgp_route_list *routes);
 static void bgp_free_routes6(struct bgp_route6_list *routes);
 static char const *bgp_msg_type_str(uint8_t type);
@@ -826,35 +827,51 @@ int bgp_process(uint32_t events[])
 	}
 
 	/* process timers */
-	if (peer->state == Established)
-	{
-	    if (time_now > peer->expire_time)
-	    {
-		LOG(1, 0, 0, "No message from BGP peer %s in %ds\n",
-		    peer->name, peer->hold);
-
-		bgp_send_notification(peer, BGP_ERR_HOLD_TIMER_EXP, 0);
-		continue;
-	    }
-
-	    if (time_now > peer->keepalive_time && !peer->outbuf->packet.header.len)
-		bgp_send_keepalive(peer);
-	}
-	else if (peer->state == Idle)
-	{
-	    if (time_now > peer->retry_time)
-		bgp_connect(peer);
-	}
-	else if (time_now > peer->state_time + BGP_STATE_TIME)
-	{
-	    LOG(1, 0, 0, "%s timer expired for BGP peer %s\n",
-		bgp_state_str(peer->state), peer->name);
-
-	    bgp_restart(peer);
-	}
+	bgp_process_timers(peer);
     }
 
     return 1;
+}
+
+void bgp_process_peers_timers()
+{
+    int i;
+
+    if (!bgp_configured)
+	return;
+
+    for (i = 0; i < BGP_NUM_PEERS; i++)
+	bgp_process_timers(&bgp_peers[i]);
+}
+
+static void bgp_process_timers(struct bgp_peer *peer)
+{
+    if (peer->state == Established)
+    {
+	if (time_now > peer->expire_time)
+	{
+	    LOG(1, 0, 0, "No message from BGP peer %s in %ds\n",
+		peer->name, peer->hold);
+
+	    bgp_send_notification(peer, BGP_ERR_HOLD_TIMER_EXP, 0);
+	    return;
+	}
+
+	if (time_now > peer->keepalive_time && !peer->outbuf->packet.header.len)
+	    bgp_send_keepalive(peer);
+    }
+    else if (peer->state == Idle)
+    {
+	if (time_now > peer->retry_time)
+	    bgp_connect(peer);
+    }
+    else if (time_now > peer->state_time + BGP_STATE_TIME)
+    {
+	LOG(1, 0, 0, "%s timer expired for BGP peer %s\n",
+	    bgp_state_str(peer->state), peer->name);
+
+	bgp_restart(peer);
+    }
 }
 
 static void bgp_free_routes(struct bgp_route_list *routes)

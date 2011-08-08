@@ -3769,6 +3769,11 @@ static void mainloop(void)
 				more++;
 			}
 		}
+#ifdef BGP
+		else
+			/* no event received, but timers could still have expired */
+			bgp_process_peers_timers();
+#endif /* BGP */
 
 		if (time_changed)
 		{

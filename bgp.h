@@ -278,6 +278,7 @@ int bgp_del_route6(struct in6_addr ip, int prefixlen);
 void bgp_enable_routing(int enable);
 int bgp_set_poll(void);
 int bgp_process(uint32_t events[]);
+void bgp_process_peers_timers();
 char const *bgp_state_str(enum bgp_state state);
 
 extern char const *cvs_id_bgp;

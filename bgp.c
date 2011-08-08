@@ -833,6 +833,7 @@ int bgp_process(uint32_t events[])
     return 1;
 }
 
+/* process bgp timers only */
 void bgp_process_peers_timers()
 {
     int i;
@@ -841,7 +842,14 @@ void bgp_process_peers_timers()
 	return;
 
     for (i = 0; i < BGP_NUM_PEERS; i++)
-	bgp_process_timers(&bgp_peers[i]);
+    {
+	struct bgp_peer *peer = &bgp_peers[i];
+
+	if (peer->state == Disabled)
+	    continue;
+
+	bgp_process_timers(peer);
+    }
 }
 
 static void bgp_process_timers(struct bgp_peer *peer)

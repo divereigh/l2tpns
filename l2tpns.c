@@ -39,6 +39,7 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 #include <sched.h>
 #include <sys/sysinfo.h>
 #include <libcli.h>
+#include <linux/netlink.h>
 
 #include "md5.h"
 #include "l2tpns.h"
@@ -56,6 +57,7 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 
 // Globals
 configt *config = NULL;		// all configuration
+int nlfd = -1;			// netlink socket
 int tunfd = -1;			// tun interface file handle. (network device)
 int udpfd = -1;			// UDP file handle
 int controlfd = -1;		// Control signal handle
@@ -71,6 +73,7 @@ int epollfd = -1;		// event polling
 time_t basetime = 0;		// base clock
 char hostname[1000] = "";	// us.
 static int tunidx;		// ifr_ifindex of tun device
+int nlseqnum = 0;		// netlink sequence number
 static int syslog_log = 0;	// are we logging to syslog
 static FILE *log_stream = 0;	// file handle for direct logging (i.e. direct into file, not via syslog).
 uint32_t last_id = 0;		// Unique ID for radius accounting
@@ -514,6 +517,79 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 	return;
 }
 
+//
+// Set up netlink socket
+static void initnetlink(void)
+{
+	struct sockaddr_nl nladdr;
+
+	nlfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (nlfd < 0)
+		return; // don't use netlink
+
+	memset(&nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+	nladdr.nl_pid = getpid();
+
+	if (bind(fd, (struct sockaddr *)&nladdr, sizeof(nladdr)) < 0)
+	{
+		close(fd);
+		fd = -1;
+		return; // don't use netlink
+	}
+}
+
+static ssize_t netlink_send(struct nlmsghdr *nh)
+{
+	struct sockaddr_nl nladdr;
+	struct iovec iov;
+	struct msghdr msg;
+	ssize_t len;
+	char buf[4096];
+	struct nlmsghdr *ack_nh;
+
+	nh->nlmsg_pid = getpid();
+	nh->nlmsg_seq = ++nlseqnum;
+	nh->nlmsg_flags |= NLM_F_ACK;
+
+	iov = { (void *)nh, nh->msg_len };
+	// set kernel address
+	memset(nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+	msg = { (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
+
+	if ((len = sendmsg(nlfd, &msg, 0)) < 0)
+		return len; // return error code
+
+	// expect ack
+	iov = { buf, sizeof(buf) };
+	msg = { (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
+	if ((len = recvmsg(nlfd, &msg, 0)) < 0)
+		return len; // return error code
+
+	for (ack_nh = (struct nlmsghdr *)buf; NLMSG_OK (ack_nh, len);
+			ack_nh = NLMSG_NEXT (ack_nh, len))
+	{
+		if (ack_nh->nlmsg_type == NLMSG_DONE)
+			return 1; // didn't get the ack
+
+		if (ack_nh->nlmsg_type == NLMSG_ERROR)
+		{
+			struct nlmsgerr *errmsg = NLMSG_DATA(ack_nh);
+			if (errmsg->error)
+				return errmsg->error; // got an error back
+			if (errmsg->msg.nlmsg_seq == nh->nlmsg_seq)
+				return 0; // ack received
+			else
+				return 2; // wrong seq number?!
+		}
+		// unknown message
+		LOG(3, 0, 0, "Got an unknown netlink message: type %d\n", ack_nh->nlmsg_type);
+	}
+
+	return 3; // no end message?!
+}
+
 // defined in linux/ipv6.h, but tricky to include from user-space
 // TODO: move routing to use netlink rather than ioctl
 struct in6_ifreq {
@@ -549,6 +625,14 @@ static void inittun(void)
 	}
 	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice));
 	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice) - 1);
+	{
+		struct nlmsghdr nlh;
+
+		{
+			LOG(0, 0, 0, "Error setting up tun device: %s", strerror(errno));
+			exit(1);
+		}
+	}
 	ifrfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
 
 	sin.sin_family = AF_INET;

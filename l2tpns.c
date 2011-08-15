@@ -617,7 +617,6 @@ static void inittun(void)
 	struct ifinfomsg ifinfo;
 	struct ifreq ifr;
 	char buf[4096];
-	struct nlmsghdr resp_nh;
 
 	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_flags = IFF_TUN;
@@ -649,6 +648,7 @@ static void inittun(void)
 			struct rtattr ifname_rta __attribute__ ((aligned(RTA_ALIGNTO)));
 			char ifname[IFNAMSIZ];
 		} req;
+		struct nlmsghdr *resp_nh;
 
 		req.nh.nlmsg_type = RTM_GETLINK;
 		req.nh.nlmsg_flags = NLM_F_REQUEST;
@@ -666,7 +666,7 @@ static void inittun(void)
 		}
 
 		resp_nh = (struct nlmsghdr *)buf;
-		if (NLMSG_OK (resp_nh, len) && resp_nh.nlmsg_type == RTM_GETLINK)
+		if (NLMSG_OK (resp_nh, len) && resp_nh->nlmsg_type == RTM_GETLINK)
 		{
 			memcpy(&ifinfo, NLMSG_DATA(resp_nh), sizeof(ifinfo));
 			// got index
@@ -690,25 +690,25 @@ static void inittun(void)
 			uint32_t mtu;
 
 			// IPv4 address
-			struct nlmsghdr addr_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
-			struct ifaddrmsg ifaddr __attribute __ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr addr_rta __attribute __ ((aligned(RTA_ALIGNTO)));
+			struct nlmsghdr addr_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct ifaddrmsg ifaddr __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr addr_rta __attribute__ ((aligned(RTA_ALIGNTO)));
 			struct in_addr addr;
 
 			// IPv6 LL address
-			struct nlmsghdr lladdr6_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
-			struct ifaddrmsg llifaddr6 __attribute __ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr lladdr6_rta __attribute __ ((aligned(RTA_ALIGNTO)));
+			struct nlmsghdr lladdr6_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct ifaddrmsg llifaddr6 __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr lladdr6_rta __attribute__ ((aligned(RTA_ALIGNTO)));
 			struct in6_addr lladdr6;
 
 			// IPv6 global address
-			struct nlmsghdr addr6_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
-			struct ifaddrmsg ifaddr6 __attribute __ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr addr6_rta __attribute __ ((aligned(RTA_ALIGNTO)));
+			struct nlmsghdr addr6_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct ifaddrmsg ifaddr6 __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr addr6_rta __attribute__ ((aligned(RTA_ALIGNTO)));
 			struct in6_addr addr6;
 
 			// end header
-			struct nlmsghdr end_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
+			struct nlmsghdr end_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
 		} req;
 		char buf[4096];
 
@@ -732,7 +732,7 @@ static void inittun(void)
 		req.mtu = MRU;
 
 		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo)
-				+ req.txqlen_rla.rta_len
+				+ req.txqlen_rta.rta_len
 				+ req.mtu_rta.rta_len);
 
 		req.addr_nh.nlmsg_type = RTM_NEWADDR;
@@ -799,6 +799,7 @@ static void inittun(void)
 		}
 
 		if (netlink_send(&req.nh, 1) < 0)
+		{
 			LOG(0, 0, 0, "Error setting up tun device: %s\n", strerror(errno));
 			exit(1);
 		}
@@ -809,13 +810,12 @@ static void inittun(void)
 			exit(1);
 		}
 
-		resp_nh = (struct nlmsghdr *)buf;
-		if ((err = netlink_check_ack(resp_nh, 4)))
+		if ((err = netlink_check_ack((struct nlmsghdr *)buf, 4)))
 		{
 			if (err < 0)
 				LOG(0, 0, 0, "Error while receiving tun device ack: %s\n", strerror(errno));
 			else
-				LOG(0, 0, 0, "Error while receiving tun device ack\n", strerror(errno));
+				LOG(0, 0, 0, "Error while receiving tun device ack\n");
 			exit(1);
 		}
 	}
@@ -4732,6 +4732,8 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+
+	initnetlink();
 
 	/* Set up the cluster communications port. */
 	if (cluster_init() < 0)

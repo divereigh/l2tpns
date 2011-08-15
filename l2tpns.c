@@ -40,6 +40,7 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 #include <sys/sysinfo.h>
 #include <libcli.h>
 #include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include "md5.h"
 #include "l2tpns.h"
@@ -65,8 +66,6 @@ int clifd = -1;			// Socket listening for CLI connections.
 int daefd = -1;			// Socket listening for DAE connections.
 int snoopfd = -1;		// UDP file handle for sending out intercept data
 int *radfds = NULL;		// RADIUS requests file handles
-int ifrfd = -1;			// File descriptor for routing, etc
-int ifr6fd = -1;		// File descriptor for IPv6 routing, etc
 int rand_fd = -1;		// Random data source
 int cluster_sockfd = -1;	// Intra-cluster communications socket.
 int epollfd = -1;		// event polling
@@ -525,86 +524,101 @@ static void initnetlink(void)
 
 	nlfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if (nlfd < 0)
-		return; // don't use netlink
+	{
+		LOG(0, 0, 0, "Can't create netlink socket: %s\n", strerror(errno));
+		exit(1);
+	}
 
 	memset(&nladdr, 0, sizeof(nladdr));
 	nladdr.nl_family = AF_NETLINK;
 	nladdr.nl_pid = getpid();
 
-	if (bind(fd, (struct sockaddr *)&nladdr, sizeof(nladdr)) < 0)
+	if (bind(nlfd, (struct sockaddr *)&nladdr, sizeof(nladdr)) < 0)
 	{
-		close(fd);
-		fd = -1;
-		return; // don't use netlink
+		LOG(0, 0, 0, "Can't bind netlink socket: %s\n", strerror(errno));
+		exit(1);
 	}
 }
 
-static ssize_t netlink_send(struct nlmsghdr *nh)
+static ssize_t netlink_send(struct nlmsghdr *nh, int want_ack)
 {
 	struct sockaddr_nl nladdr;
 	struct iovec iov;
 	struct msghdr msg;
-	ssize_t len;
-	char buf[4096];
-	struct nlmsghdr *ack_nh;
 
 	nh->nlmsg_pid = getpid();
 	nh->nlmsg_seq = ++nlseqnum;
-	nh->nlmsg_flags |= NLM_F_ACK;
+	if (want_ack)
+		nh->nlmsg_flags |= NLM_F_ACK;
 
-	iov = { (void *)nh, nh->msg_len };
 	// set kernel address
-	memset(nladdr, 0, sizeof(nladdr));
+	memset(&nladdr, 0, sizeof(nladdr));
 	nladdr.nl_family = AF_NETLINK;
-	msg = { (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
 
-	if ((len = sendmsg(nlfd, &msg, 0)) < 0)
-		return len; // return error code
+	iov = (struct iovec){ (void *)nh, nh->nlmsg_len };
+	msg = (struct msghdr){ (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
+
+	return sendmsg(nlfd, &msg, 0);
+}
+
+static ssize_t netlink_recv(char *buf, ssize_t len)
+{
+	struct sockaddr_nl nladdr;
+	struct iovec iov;
+	struct msghdr msg;
+
+	// set kernel address
+	memset(&nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+
+	iov = (struct iovec){ buf, len };
+	msg = (struct msghdr){ (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
+
+	return recvmsg(nlfd, &msg, 0);
+}
+
+static ssize_t netlink_check_ack(struct nlmsghdr *ack_nh, int msg_count)
+{
+	ssize_t len;
+	uint32_t seqnum;
 
 	// expect ack
-	iov = { buf, sizeof(buf) };
-	msg = { (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
-	if ((len = recvmsg(nlfd, &msg, 0)) < 0)
-		return len; // return error code
-
-	for (ack_nh = (struct nlmsghdr *)buf; NLMSG_OK (ack_nh, len);
-			ack_nh = NLMSG_NEXT (ack_nh, len))
+	for (; NLMSG_OK (ack_nh, len); ack_nh = NLMSG_NEXT (ack_nh, len))
 	{
 		if (ack_nh->nlmsg_type == NLMSG_DONE)
-			return 1; // didn't get the ack
+			return msg_count != 0 || seqnum != nlseqnum;
+			// 1 => lost an ack
 
 		if (ack_nh->nlmsg_type == NLMSG_ERROR)
 		{
 			struct nlmsgerr *errmsg = NLMSG_DATA(ack_nh);
 			if (errmsg->error)
 				return errmsg->error; // got an error back
-			if (errmsg->msg.nlmsg_seq == nh->nlmsg_seq)
-				return 0; // ack received
 			else
-				return 2; // wrong seq number?!
+			{
+				// ack received
+				--msg_count;
+				if (errmsg->msg.nlmsg_seq > seqnum);
+					seqnum = errmsg->msg.nlmsg_seq;
+			}
 		}
-		// unknown message
-		LOG(3, 0, 0, "Got an unknown netlink message: type %d\n", ack_nh->nlmsg_type);
+		else
+			// unknown message
+			LOG(3, 0, 0, "Got an unknown netlink message: type %d\n", ack_nh->nlmsg_type);
 	}
 
-	return 3; // no end message?!
+	return 1; // malformed message?!
 }
-
-// defined in linux/ipv6.h, but tricky to include from user-space
-// TODO: move routing to use netlink rather than ioctl
-struct in6_ifreq {
-	struct in6_addr ifr6_addr;
-	__u32 ifr6_prefixlen;
-	unsigned int ifr6_ifindex;
-};
 
 //
 // Set up TUN interface
 static void inittun(void)
 {
+	struct ifinfomsg ifinfo;
 	struct ifreq ifr;
-	struct in6_ifreq ifr6;
-	struct sockaddr_in sin = {0};
+	char buf[4096];
+	struct nlmsghdr resp_nh;
+
 	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_flags = IFF_TUN;
 
@@ -625,79 +639,184 @@ static void inittun(void)
 	}
 	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice));
 	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice) - 1);
-	{
-		struct nlmsghdr nlh;
 
+	{
+		// get the interface index
+		ssize_t len;
+		struct {
+			struct nlmsghdr nh;
+			struct ifinfomsg ifinfo __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr ifname_rta __attribute__ ((aligned(RTA_ALIGNTO)));
+			char ifname[IFNAMSIZ];
+		} req;
+
+		req.nh.nlmsg_type = RTM_GETLINK;
+		req.nh.nlmsg_flags = NLM_F_REQUEST;
+
+		req.ifinfo.ifi_family = AF_UNSPEC; // as the man says
+
+		req.ifname_rta.rta_len = RTA_LENGTH(strlen(config->tundevice)+1);
+		req.ifname_rta.rta_type = IFLA_IFNAME;
+		strncpy(req.ifname, config->tundevice, IFNAMSIZ-1);
+
+		if(netlink_send(&req.nh, 0) < 0 || (len = netlink_recv(buf, sizeof(buf))) < 0)
 		{
-			LOG(0, 0, 0, "Error setting up tun device: %s", strerror(errno));
+			LOG(0, 0, 0, "Error getting tun ifindex: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		resp_nh = (struct nlmsghdr *)buf;
+		if (NLMSG_OK (resp_nh, len) && resp_nh.nlmsg_type == RTM_GETLINK)
+		{
+			memcpy(&ifinfo, NLMSG_DATA(resp_nh), sizeof(ifinfo));
+			// got index
+			tunidx = ifinfo.ifi_index;
+		}
+		else
+		{
+			LOG(0, 0, 0, "Malformed answer getting tun ifindex\n");
 			exit(1);
 		}
 	}
-	ifrfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
+	{
+		ssize_t err;
+		struct {
+			// interface setting
+			struct nlmsghdr nh;
+			struct ifinfomsg ifinfo __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr txqlen_rta __attribute__ ((aligned(RTA_ALIGNTO)));
+			uint32_t txqlen;
+			struct rtattr mtu_rta __attribute__ ((aligned(RTA_ALIGNTO)));
+			uint32_t mtu;
 
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = config->bind_address ? config->bind_address : 0x01010101; // 1.1.1.1
-	memcpy(&ifr.ifr_addr, &sin, sizeof(struct sockaddr));
+			// IPv4 address
+			struct nlmsghdr addr_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
+			struct ifaddrmsg ifaddr __attribute __ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr addr_rta __attribute __ ((aligned(RTA_ALIGNTO)));
+			struct in_addr addr;
 
-	if (ioctl(ifrfd, SIOCSIFADDR, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun address: %s\n", strerror(errno));
-		exit(1);
-	}
-	/* Bump up the qlen to deal with bursts from the network */
-	ifr.ifr_qlen = 1000;
-	if (ioctl(ifrfd, SIOCSIFTXQLEN, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun queue length: %s\n", strerror(errno));
-		exit(1);
-	}
-	/* set MTU to modem MRU */
-	ifr.ifr_mtu = MRU;
-	if (ioctl(ifrfd, SIOCSIFMTU, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun MTU: %s\n", strerror(errno));
-		exit(1);
-	}
-	ifr.ifr_flags = IFF_UP;
-	if (ioctl(ifrfd, SIOCSIFFLAGS, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun flags: %s\n", strerror(errno));
-		exit(1);
-	}
-	if (ioctl(ifrfd, SIOCGIFINDEX, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error getting tun ifindex: %s\n", strerror(errno));
-		exit(1);
-	}
-	tunidx = ifr.ifr_ifindex;
+			// IPv6 LL address
+			struct nlmsghdr lladdr6_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
+			struct ifaddrmsg llifaddr6 __attribute __ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr lladdr6_rta __attribute __ ((aligned(RTA_ALIGNTO)));
+			struct in6_addr lladdr6;
 
-	// Only setup IPv6 on the tun device if we have a configured prefix
-	if (config->ipv6_prefix.s6_addr[0]) {
-		ifr6fd = socket(PF_INET6, SOCK_DGRAM, 0);
+			// IPv6 global address
+			struct nlmsghdr addr6_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
+			struct ifaddrmsg ifaddr6 __attribute __ ((aligned(NLMSG_ALIGNTO)));
+			struct rtattr addr6_rta __attribute __ ((aligned(RTA_ALIGNTO)));
+			struct in6_addr addr6;
 
-		// Link local address is FE80::1
-		memset(&ifr6.ifr6_addr, 0, sizeof(ifr6.ifr6_addr));
-		ifr6.ifr6_addr.s6_addr[0] = 0xFE;
-		ifr6.ifr6_addr.s6_addr[1] = 0x80;
-		ifr6.ifr6_addr.s6_addr[15] = 1;
-		ifr6.ifr6_prefixlen = 64;
-		ifr6.ifr6_ifindex = ifr.ifr_ifindex;
-		if (ioctl(ifr6fd, SIOCSIFADDR, (void *) &ifr6) < 0)
+			// end header
+			struct nlmsghdr end_nh __attribute __ ((aligned(NLMSG_ALIGNTO)));
+		} req;
+		char buf[4096];
+
+		memset(&req, 0, sizeof(req));
+
+		req.nh.nlmsg_type = RTM_NEWLINK;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_REPLACE | NLM_F_MULTI;
+
+		req.ifinfo = ifinfo;
+		req.ifinfo.ifi_flags |= IFF_UP; // set interface up
+		req.ifinfo.ifi_change = IFF_UP; // only change this flag
+
+		req.txqlen_rta.rta_len = RTA_LENGTH(sizeof(req.txqlen));
+		req.txqlen_rta.rta_type = IFLA_TXQLEN;
+		/* Bump up the qlen to deal with bursts from the network */
+		req.txqlen = 1000;
+
+		req.mtu_rta.rta_len = RTA_LENGTH(sizeof(req.txqlen));
+		req.mtu_rta.rta_type = IFLA_MTU;
+		/* set MTU to modem MRU */
+		req.mtu = MRU;
+
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo)
+				+ req.txqlen_rla.rta_len
+				+ req.mtu_rta.rta_len);
+
+		req.addr_nh.nlmsg_type = RTM_NEWADDR;
+		req.addr_nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+
+		req.ifaddr.ifa_family = AF_INET;
+		req.ifaddr.ifa_prefixlen = 32;
+		req.ifaddr.ifa_index = ifinfo.ifi_index;
+
+		req.addr_rta.rta_len = RTA_LENGTH(sizeof(req.addr));
+		req.addr_rta.rta_type = IFA_ADDRESS;
+		req.addr.s_addr = config->bind_address ?
+			config->bind_address : 0x01010101; // 1.1.1.1
+
+		req.addr_nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifaddr)
+				+ req.addr_rta.rta_len);
+
+		// Only setup IPv6 on the tun device if we have a configured prefix
+		if (config->ipv6_prefix.s6_addr[0]) {
+			req.lladdr6_nh.nlmsg_type = RTM_NEWADDR;
+			req.lladdr6_nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+
+			req.llifaddr6.ifa_family = AF_INET6;
+			req.llifaddr6.ifa_prefixlen = 64;
+			req.llifaddr6.ifa_scope = RT_SCOPE_LINK;
+			req.llifaddr6.ifa_index = ifinfo.ifi_index;
+
+			req.lladdr6_rta.rta_len = RTA_LENGTH(sizeof(req.lladdr6));
+			req.lladdr6_rta.rta_type = IFA_LOCAL;
+			// Link local address is FE80::1
+			memset(&req.lladdr6, 0, sizeof(req.lladdr6));
+			req.lladdr6.s6_addr[0] = 0xFE;
+			req.lladdr6.s6_addr[1] = 0x80;
+			req.lladdr6.s6_addr[15] = 1;
+
+			req.lladdr6_nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifaddr)
+					+ req.lladdr6_rta.rta_len);
+
+			req.addr6_nh.nlmsg_type = RTM_NEWADDR;
+			req.addr6_nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+
+			req.ifaddr6.ifa_family = AF_INET6;
+			req.ifaddr6.ifa_prefixlen = 64;
+			req.ifaddr6.ifa_scope = RT_SCOPE_UNIVERSE;
+			req.ifaddr6.ifa_index = ifinfo.ifi_index;
+
+			req.addr6_rta.rta_len = RTA_LENGTH(sizeof(req.addr6));
+			req.addr6_rta.rta_type = IFA_LOCAL;
+			// Global address is prefix::1
+			req.addr6 = config->ipv6_prefix;
+			req.addr6.s6_addr[15] = 1;
+
+			req.lladdr6_nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifaddr)
+					+ req.lladdr6_rta.rta_len);
+
+			req.end_nh.nlmsg_type = NLMSG_DONE;
+			req.end_nh.nlmsg_len = NLMSG_LENGTH(0);
+		}
+		else
 		{
-			LOG(0, 0, 0, "Error setting tun IPv6 link local address:"
-				" %s\n", strerror(errno));
+			// we terminate at the beginning of IPv6 stuff
+			req.lladdr6_nh.nlmsg_type = NLMSG_DONE;
+			req.lladdr6_nh.nlmsg_len = NLMSG_LENGTH(0);
 		}
 
-		// Global address is prefix::1
-		memset(&ifr6.ifr6_addr, 0, sizeof(ifr6.ifr6_addr));
-		ifr6.ifr6_addr = config->ipv6_prefix;
-		ifr6.ifr6_addr.s6_addr[15] = 1;
-		ifr6.ifr6_prefixlen = 64;
-		ifr6.ifr6_ifindex = ifr.ifr_ifindex;
-		if (ioctl(ifr6fd, SIOCSIFADDR, (void *) &ifr6) < 0)
+		if (netlink_send(&req.nh, 1) < 0)
+			LOG(0, 0, 0, "Error setting up tun device: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		if (netlink_recv(buf, sizeof(buf)) < 0)
 		{
-			LOG(0, 0, 0, "Error setting tun IPv6 global address: %s\n",
-				strerror(errno));
+			LOG(0, 0, 0, "Error waiting ack for setting up tun device: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		resp_nh = (struct nlmsghdr *)buf;
+		if ((err = netlink_check_ack(resp_nh, 4)))
+		{
+			if (err < 0)
+				LOG(0, 0, 0, "Error while receiving tun device ack: %s\n", strerror(errno));
+			else
+				LOG(0, 0, 0, "Error while receiving tun device ack\n", strerror(errno));
+			exit(1);
 		}
 	}
 }

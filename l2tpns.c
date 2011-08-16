@@ -576,6 +576,16 @@ static ssize_t netlink_recv(void *buf, ssize_t len)
 	return recvmsg(nlfd, &msg, 0);
 }
 
+// messages corresponding to different phases seq number
+static char *tun_nl_phase_msg[] = {
+	"initialized",
+	"getting tun interface index",
+	"setting tun interface parameters",
+	"setting tun IPv4 address",
+	"setting tun LL IPv6 address",
+	"setting tun global IPv6 address",
+};
+
 //
 // Set up TUN interface
 static void inittun(void)
@@ -798,9 +808,9 @@ static void inittun(void)
 		// if we get an error for seqnum < min_initok_nlseqnum,
 		// we must exit as initialization went wrong
 		if (config->ipv6_prefix.s6_addr[0])
-			min_initok_nlseqnum = 3 + 1; // idx + if + addr
-		else
 			min_initok_nlseqnum = 5 + 1; // idx + if + addr + 2*addr6
+		else
+			min_initok_nlseqnum = 3 + 1; // idx + if + addr
 	}
 }
 
@@ -3886,13 +3896,18 @@ static void mainloop(void)
 					if (nh->nlmsg_type == NLMSG_ERROR)
 					{
 						struct nlmsgerr *errmsg = NLMSG_DATA(nh);
-						if (errmsg->error && errmsg->msg.nlmsg_seq < min_initok_nlseqnum)
+						if (errmsg->error)
 						{
-							LOG(0, 0, 0, "Got a fatal netlink error: seq %d flags %d code %d\n", nh->nlmsg_seq, nh->nlmsg_flags, errmsg->error);
-							exit(1);
+							if (errmsg->msg.nlmsg_seq < min_initok_nlseqnum)
+							{
+								LOG(0, 0, 0, "Got a fatal netlink error (while %s): %s\n", tun_nl_phase_msg[nh->nlmsg_seq], strerror(-errmsg->error));
+								exit(1);
+							}
+							else
+
+								LOG(0, 0, 0, "Got a netlink error: %s\n", strerror(-errmsg->error));
 						}
-						else
-							LOG(1, 0, 0, "Got a netlink error: seq %d flags %d code %d\n", nh->nlmsg_seq, nh->nlmsg_flags, errmsg->error);
+						// else it's a ack
 					}
 					else
 						LOG(1, 0, 0, "Got a unknown netlink message: type %d seq %d flags %d\n", nh->nlmsg_type, nh->nlmsg_seq, nh->nlmsg_flags);

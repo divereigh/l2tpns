@@ -576,6 +576,19 @@ static ssize_t netlink_recv(void *buf, ssize_t len)
 	return recvmsg(nlfd, &msg, 0);
 }
 
+/* adapted from iproute2 */
+void netlink_addattr(struct nlmsghdr *nh, int type, const void *data, int alen)
+{
+	int len = RTA_LENGTH(alen);
+	struct rtattr *rta;
+
+	rta = (struct rtattr *)(((void *)nh) + NLMSG_ALIGN(nh->nlmsg_len));
+	rta->rta_type = type;
+	rta->rta_len = len;
+	memcpy(RTA_DATA(rta), data, alen);
+	nh->nlmsg_len = NLMSG_ALIGN(nh->nlmsg_len) + RTA_ALIGN(len);
+}
+
 // messages corresponding to different phases seq number
 static char *tun_nl_phase_msg[] = {
 	"initialized",
@@ -628,15 +641,11 @@ static void inittun(void)
 
 		req.nh.nlmsg_type = RTM_GETLINK;
 		req.nh.nlmsg_flags = NLM_F_REQUEST;
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo));
 
 		req.ifinfo.ifi_family = AF_UNSPEC; // as the man says
 
-		req.ifname_rta.rta_len = RTA_LENGTH(strlen(config->tundevice)+1);
-		req.ifname_rta.rta_type = IFLA_IFNAME;
-		strncpy(req.ifname, config->tundevice, IFNAMSIZ-1);
-
-		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo)
-				+ req.ifname_rta.rta_len);
+		netlink_addattr(&req.nh, IFLA_IFNAME, config->tundevice, strlen(config->tundevice)+1);
 
 		if(netlink_send(&req.nh) < 0 || (len = netlink_recv(buf, sizeof(buf))) < 0)
 		{
@@ -665,133 +674,91 @@ static void inittun(void)
 			} ifmsg __attribute__ ((aligned(NLMSG_ALIGNTO)));
 			char rtdata[32]; // 32 should be enough
 		} req;
-		struct {
-			struct rtattr rta;
-			uint32_t u32 __attribute__ ((aligned(RTA_ALIGNTO)));;
-		} u32_attr;
-		struct {
-			struct rtattr rta;
-			struct in_addr addr __attribute__ ((aligned(RTA_ALIGNTO)));;
-		} ipv4_attr;
-		struct {
-			struct rtattr rta;
-			struct in6_addr addr6 __attribute__ ((aligned(RTA_ALIGNTO)));;
-		} ipv6_attr;
-		char *buf_ptr;
+		uint32_t txqlen, mtu;
+		struct in_addr ip;
 
 		memset(&req, 0, sizeof(req));
 
 		req.nh.nlmsg_type = RTM_SETLINK;
 		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_MULTI;
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifinfo));
 
 		req.ifmsg.ifinfo = ifinfo;
 		req.ifmsg.ifinfo.ifi_flags |= IFF_UP; // set interface up
 		req.ifmsg.ifinfo.ifi_change = IFF_UP; // only change this flag
 
-		buf_ptr = NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifinfo);
-
-		u32_attr.rta.rta_len = RTA_LENGTH(sizeof(u32_attr.u32));
-		u32_attr.rta.rta_type = IFLA_TXQLEN;
 		/* Bump up the qlen to deal with bursts from the network */
-		u32_attr.u32 = 1000;
-		memcpy(buf_ptr, &u32_attr, sizeof(u32_attr));
-
-		buf_ptr += RTA_ALIGN(u32_attr.rta.rta_len);
-
-		u32_attr.rta.rta_len = RTA_LENGTH(sizeof(u32_attr.u32));
-		u32_attr.rta.rta_type = IFLA_MTU;
+		txqlen = 1000;
+		netlink_addattr(&req.nh, IFLA_TXQLEN, &txqlen, sizeof(txqlen));
 		/* set MTU to modem MRU */
-		u32_attr.u32 = MRU;
-		memcpy(buf_ptr, &u32_attr, sizeof(u32_attr));
-
-		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifinfo)
-				+ u32_attr.rta.rta_len * 2);
+		mtu = MRU;
+		netlink_addattr(&req.nh, IFLA_MTU, &mtu, sizeof(mtu));
 
 		if (netlink_send(&req.nh) < 0)
-		{
-			LOG(0, 0, 0, "Error setting up tun device interface: %s\n", strerror(errno));
-			exit(1);
-		}
+			goto senderror;
 
 		memset(&req, 0, sizeof(req));
 
 		req.nh.nlmsg_type = RTM_NEWADDR;
 		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
 
 		req.ifmsg.ifaddr.ifa_family = AF_INET;
 		req.ifmsg.ifaddr.ifa_prefixlen = 32;
 		req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
 
-		ipv4_attr.rta.rta_len = RTA_LENGTH(sizeof(ipv4_attr.addr));
-		ipv4_attr.rta.rta_type = IFA_LOCAL;
-		ipv4_attr.addr.s_addr = config->bind_address ?
-			config->bind_address : 0x01010101; // 1.1.1.1
-		memcpy(NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifaddr), &ipv4_attr, sizeof(ipv4_attr));
-
-		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr)
-				+ ipv4_attr.rta.rta_len);
+		if (config->bind_address)
+			ip.s_addr = config->bind_address;
+		else
+			ip.s_addr = 0x01010101, // 1.1.1.1
+		netlink_addattr(&req.nh, IFA_LOCAL, &ip, sizeof(ip));
 
 		if (netlink_send(&req.nh) < 0)
-		{
-			LOG(0, 0, 0, "Error setting up tun device IPv4 address: %s\n", strerror(errno));
-			exit(1);
-		}
+			goto senderror;
 
 		// Only setup IPv6 on the tun device if we have a configured prefix
 		if (config->ipv6_prefix.s6_addr[0]) {
+			struct in6_addr ip6;
+
 			memset(&req, 0, sizeof(req));
 
 			req.nh.nlmsg_type = RTM_NEWADDR;
 			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
 
 			req.ifmsg.ifaddr.ifa_family = AF_INET6;
 			req.ifmsg.ifaddr.ifa_prefixlen = 64;
 			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_LINK;
 			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
 
-			ipv6_attr.rta.rta_len = RTA_LENGTH(sizeof(ipv6_attr.addr6));
-			ipv6_attr.rta.rta_type = IFA_LOCAL;
 			// Link local address is FE80::1
-			memset(&ipv6_attr.addr6, 0, sizeof(ipv6_attr.addr6));
-			ipv6_attr.addr6.s6_addr[0] = 0xFE;
-			ipv6_attr.addr6.s6_addr[1] = 0x80;
-			ipv6_attr.addr6.s6_addr[15] = 1;
-			memcpy(NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifaddr), &ipv6_attr, sizeof(ipv6_attr));
-
-			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr)
-					+ ipv6_attr.rta.rta_len);
+			memset(&ip6, 0, sizeof(ip6));
+			ip6.s6_addr[0] = 0xFE;
+			ip6.s6_addr[1] = 0x80;
+			ip6.s6_addr[15] = 1;
+			netlink_addattr(&req.nh, IFA_LOCAL, &ip6, sizeof(ip6));
 
 			if (netlink_send(&req.nh) < 0)
-			{
-				LOG(0, 0, 0, "Error setting up tun device IPv6 LL address: %s\n", strerror(errno));
-				exit(1);
-			}
+				goto senderror;
 
 			memset(&req, 0, sizeof(req));
 
 			req.nh.nlmsg_type = RTM_NEWADDR;
 			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
 
 			req.ifmsg.ifaddr.ifa_family = AF_INET6;
 			req.ifmsg.ifaddr.ifa_prefixlen = 64;
 			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
 			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
 
-			ipv6_attr.rta.rta_len = RTA_LENGTH(sizeof(ipv6_attr.addr6));
-			ipv6_attr.rta.rta_type = IFA_LOCAL;
 			// Global address is prefix::1
-			ipv6_attr.addr6 = config->ipv6_prefix;
-			ipv6_attr.addr6.s6_addr[15] = 1;
-			memcpy(NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifaddr), &ipv6_attr, sizeof(ipv6_attr));
-
-			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr)
-					+ ipv6_attr.rta.rta_len);
+			ip6 = config->ipv6_prefix;
+			ip6.s6_addr[15] = 1;
+			netlink_addattr(&req.nh, IFA_LOCAL, &ip6, sizeof(ip6));
 
 			if (netlink_send(&req.nh) < 0)
-			{
-				LOG(0, 0, 0, "Error setting up tun device IPv6 global address: %s\n", strerror(errno));
-				exit(1);
-			}
+				goto senderror;
 		}
 
 		memset(&req, 0, sizeof(req));
@@ -800,10 +767,7 @@ static void inittun(void)
 		req.nh.nlmsg_len = NLMSG_LENGTH(0);
 
 		if (netlink_send(&req.nh) < 0)
-		{
-			LOG(0, 0, 0, "Error finishing setting up tun device: %s\n", strerror(errno));
-			exit(1);
-		}
+			goto senderror;
 
 		// if we get an error for seqnum < min_initok_nlseqnum,
 		// we must exit as initialization went wrong
@@ -812,6 +776,12 @@ static void inittun(void)
 		else
 			min_initok_nlseqnum = 3 + 1; // idx + if + addr
 	}
+
+	return;
+
+senderror:
+	LOG(0, 0, 0, "Error while setting up tun device: %s\n", strerror(errno));
+	exit(1);
 }
 
 // set up UDP ports

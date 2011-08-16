@@ -611,8 +611,8 @@ static void inittun(void)
 		LOG(0, 0, 0, "Can't set tun interface: %s\n", strerror(errno));
 		exit(1);
 	}
-	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice));
-	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice) - 1);
+	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice) - 1);
+	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice));
 
 	{
 		// get the interface index

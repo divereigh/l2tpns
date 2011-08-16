@@ -616,6 +616,10 @@ struct Tstats
 #define SET_STAT(x, y)
 #endif
 
+#ifndef IFNAMSIZ
+# define IFNAMSIZ 16
+#endif
+
 typedef struct
 {
 	int		debug;				// debugging level
@@ -631,7 +635,7 @@ typedef struct
 	int		reload_config;			// flag to re-read config (set by cli)
 	int		multi_read_count;		// amount of packets to read per fd in processing loop
 
-	char		tundevice[10];			// tun device name
+	char		tundevice[IFNAMSIZ];		// tun device name
 	char		log_filename[128];
 
 	char		l2tp_secret[64];		// L2TP shared secret

@@ -419,16 +419,19 @@ void random_data(uint8_t *buf, int len)
 // via BGP if enabled, and stuffs it into the
 // 'sessionbyip' cache.
 //
-// 'ip' and 'mask' must be in _host_ order.
+// 'ip' must be in _host_ order.
 //
-static void routeset(sessionidt s, in_addr_t ip, in_addr_t mask, in_addr_t gw, int add)
+static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, int add)
 {
 	struct rtentry r;
+	in_addr_t mask;
 	int i;
 
-	if (!mask) mask = 0xffffffff;
+	if (!prefixlen) prefixlen = 32;
 
-	ip &= mask;		// Force the ip to be the first one in the route.
+	mask = 0xffffffff << (32 - prefixlen);
+
+	ip &= mask;	// Force the ip to be the first one in the route.
 
 	memset(&r, 0, sizeof(r));
 	r.rt_dev = config->tundevice;
@@ -441,11 +444,11 @@ static void routeset(sessionidt s, in_addr_t ip, in_addr_t mask, in_addr_t gw, i
 	r.rt_flags = (RTF_UP | RTF_STATIC);
 	if (gw)
 		r.rt_flags |= RTF_GATEWAY;
-	else if (mask == 0xffffffff)
+	else if (prefixlen == 32)
 		r.rt_flags |= RTF_HOST;
 
-	LOG(1, s, 0, "Route %s %s/%s%s%s\n", add ? "add" : "del",
-	    fmtaddr(htonl(ip), 0), fmtaddr(htonl(mask), 1),
+	LOG(1, s, 0, "Route %s %s/%d%s%s\n", add ? "add" : "del",
+	    fmtaddr(htonl(ip), 0), prefixlen,
 	    gw ? " via" : "", gw ? fmtaddr(htonl(gw), 2) : "");
 
 	if (ioctl(ifrfd, add ? SIOCADDRT : SIOCDELRT, (void *) &r) < 0)
@@ -453,9 +456,9 @@ static void routeset(sessionidt s, in_addr_t ip, in_addr_t mask, in_addr_t gw, i
 
 #ifdef BGP
 	if (add)
-		bgp_add_route(htonl(ip), htonl(mask));
+		bgp_add_route(htonl(ip), prefixlen);
 	else
-		bgp_del_route(htonl(ip), htonl(mask));
+		bgp_del_route(htonl(ip), prefixlen);
 #endif /* BGP */
 
 		// Add/Remove the IPs to the 'sessionbyip' cache.
@@ -471,7 +474,7 @@ static void routeset(sessionidt s, in_addr_t ip, in_addr_t mask, in_addr_t gw, i
 		if (!add)	// Are we deleting a route?
 			s = 0;	// Caching the session as '0' is the same as uncaching.
 
-		for (i = ip; (i&mask) == (ip&mask) ; ++i)
+		for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
 			cache_ipmap(i, s);
 	}
 }
@@ -1927,11 +1930,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		int routed = 0;
 		for (r = 0; r < MAXROUTE && session[s].route[r].ip; r++)
 		{
-			if ((session[s].ip & session[s].route[r].mask) ==
-			    (session[s].route[r].ip & session[s].route[r].mask))
+			if ((session[s].ip >> (32-session[s].route[r].prefixlen)) ==
+			    (session[s].route[r].ip >> (32-session[s].route[r].prefixlen)))
 				routed++;
 
-			if (del_routes) routeset(s, session[s].route[r].ip, session[s].route[r].mask, 0, 0);
+			if (del_routes) routeset(s, session[s].route[r].ip, session[s].route[r].prefixlen, 0, 0);
 			session[s].route[r].ip = 0;
 		}
 
@@ -4443,18 +4446,18 @@ static void fix_address_pool(int sid)
 //
 // Add a block of addresses to the IP pool to hand out.
 //
-static void add_to_ip_pool(in_addr_t addr, in_addr_t mask)
+static void add_to_ip_pool(in_addr_t addr, int prefixlen)
 {
 	int i;
-	if (mask == 0)
-		mask = 0xffffffff;	// Host route only.
+	if (prefixlen == 0)
+		prefixlen = 32;		// Host route only.
 
-	addr &= mask;
+	addr &= 0xffffffff << (32 - prefixlen);
 
 	if (ip_pool_size >= MAXIPPOOL)	// Pool is full!
 		return ;
 
-	for (i = addr ;(i & mask) == addr; ++i)
+	for (i = addr ; i < addr+(1<<(32-prefixlen)); ++i)
 	{
 		if ((i & 0xff) == 0 || (i&0xff) == 255)
 			continue;	// Skip 0 and broadcast addresses.
@@ -4512,7 +4515,7 @@ static void initippool()
 		{
 			// It's a range
 			int numbits = 0;
-			in_addr_t start = 0, mask = 0;
+			in_addr_t start = 0;
 
 			LOG(2, 0, 0, "Adding IP address range %s\n", buf);
 			*p++ = 0;
@@ -4522,15 +4525,14 @@ static void initippool()
 				continue;
 			}
 			start = ntohl(inet_addr(pool));
-			mask = (in_addr_t) (pow(2, numbits) - 1) << (32 - numbits);
 
 			// Add a static route for this pool
-			LOG(5, 0, 0, "Adding route for address pool %s/%u\n",
-				fmtaddr(htonl(start), 0), 32 + mask);
+			LOG(5, 0, 0, "Adding route for address pool %s/%d\n",
+				fmtaddr(htonl(start), 0), numbits);
 
-			routeset(0, start, mask, 0, 1);
+			routeset(0, start, numbits, 0, 1);
 
-			add_to_ip_pool(start, mask);
+			add_to_ip_pool(start, numbits);
 		}
 		else
 		{
@@ -5179,11 +5181,11 @@ int sessionsetup(sessionidt s, tunnelidt t)
 		// Add the route for this session.
 		for (r = 0; r < MAXROUTE && session[s].route[r].ip; r++)
 		{
-			if ((session[s].ip & session[s].route[r].mask) ==
-			    (session[s].route[r].ip & session[s].route[r].mask))
+			if ((session[s].ip >> (32-session[s].route[r].prefixlen)) ==
+			    (session[s].route[r].ip >> (32-session[s].route[r].prefixlen)))
 				routed++;
 
-			routeset(s, session[s].route[r].ip, session[s].route[r].mask, 0, 1);
+			routeset(s, session[s].route[r].ip, session[s].route[r].prefixlen, 0, 1);
 		}
 
 		// Static IPs need to be routed if not already
@@ -5254,7 +5256,7 @@ int load_session(sessionidt s, sessiont *new)
 
 	for (i = 0; !newip && i < MAXROUTE && (session[s].route[i].ip || new->route[i].ip); i++)
 		if (new->route[i].ip != session[s].route[i].ip ||
-		    new->route[i].mask != session[s].route[i].mask)
+		    new->route[i].prefixlen != session[s].route[i].prefixlen)
 			newip++;
 
 	// needs update
@@ -5265,11 +5267,11 @@ int load_session(sessionidt s, sessiont *new)
 		// remove old routes...
 		for (i = 0; i < MAXROUTE && session[s].route[i].ip; i++)
 		{
-			if ((session[s].ip & session[s].route[i].mask) ==
-			    (session[s].route[i].ip & session[s].route[i].mask))
+			if ((session[s].ip >> (32-session[s].route[i].prefixlen)) ==
+			    (session[s].route[i].ip >> (32-session[s].route[i].prefixlen)))
 				routed++;
 
-			routeset(s, session[s].route[i].ip, session[s].route[i].mask, 0, 0);
+			routeset(s, session[s].route[i].ip, session[s].route[i].prefixlen, 0, 0);
 		}
 
 		// ...ip
@@ -5288,11 +5290,11 @@ int load_session(sessionidt s, sessiont *new)
 		// add new routes...
 		for (i = 0; i < MAXROUTE && new->route[i].ip; i++)
 		{
-			if ((new->ip & new->route[i].mask) ==
-			    (new->route[i].ip & new->route[i].mask))
+			if ((new->ip >> (32-new->route[i].prefixlen)) ==
+			    (new->route[i].ip >> (32-new->route[i].prefixlen)))
 				routed++;
 
-			routeset(s, new->route[i].ip, new->route[i].mask, 0, 1);
+			routeset(s, new->route[i].ip, new->route[i].prefixlen, 0, 1);
 		}
 
 		// ...ip

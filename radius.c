@@ -402,21 +402,11 @@ void radiussend(uint16_t r, uint8_t state)
 			int r;
 			for (r = 0; s && r < MAXROUTE && session[s].route[r].ip; r++)
 			{
-				int width = 32;
-				if (session[s].route[r].mask)
-				{
-				    int mask = session[s].route[r].mask;
-				    while (!(mask & 1))
-				    {
-					width--;
-					mask >>= 1;
-				    }
-				}
-
 				*p = 22;	// Framed-Route
 				p[1] = sprintf((char *) p + 2, "%s/%d %s 1",
 					fmtaddr(htonl(session[s].route[r].ip), 0),
-					width, fmtaddr(htonl(session[s].ip), 1)) + 2;
+					session[s].route[r].prefixlen,
+					fmtaddr(htonl(session[s].ip), 1)) + 2;
 
 				p += p[1];
 			}
@@ -696,7 +686,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 					else if (*p == 22)
 					{
 						// Framed-Route
-						in_addr_t ip = 0, mask = 0;
+						in_addr_t ip = 0;
 						uint8_t u = 0;
 						uint8_t bits = 0;
 						uint8_t *n = p + 2;
@@ -718,14 +708,13 @@ void processrad(uint8_t *buf, int len, char socket_index)
 							n++;
 							while (n < e && isdigit(*n))
 								bits = bits * 10 + *n++ - '0';
-							mask = (( -1) << (32 - bits));
 						}
 						else if ((ip >> 24) < 128)
-							mask = 0xFF0000;
+							bits = 8;
 						else if ((ip >> 24) < 192)
-							mask = 0xFFFF0000;
+							bits = 16;
 						else
-							mask = 0xFFFFFF00;
+							bits = 24;
 
 						if (routes == MAXROUTE)
 						{
@@ -733,11 +722,11 @@ void processrad(uint8_t *buf, int len, char socket_index)
 						}
 						else if (ip)
 						{
-							LOG(3, s, session[s].tunnel, "   Radius reply contains route for %s/%s\n",
-								fmtaddr(htonl(ip), 0), fmtaddr(htonl(mask), 1));
+							LOG(3, s, session[s].tunnel, "   Radius reply contains route for %s/%d\n",
+								fmtaddr(htonl(ip), 0), bits, 1));
 							
 							session[s].route[routes].ip = ip;
-							session[s].route[routes].mask = mask;
+							session[s].route[routes].prefixlen = bits;
 							routes++;
 						}
 					}

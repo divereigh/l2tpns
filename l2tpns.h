@@ -233,7 +233,7 @@ struct cli_tunnel_actions {
 typedef struct			// route
 {
 	in_addr_t ip;
-	in_addr_t mask;
+	int prefixlen;
 }
 routet;
 

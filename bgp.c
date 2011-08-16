@@ -29,7 +29,7 @@ char const *cvs_id_bgp = "$Id: bgp.c,v 1.12 2005/09/02 23:39:36 bodea Exp $";
 
 static void bgp_clear(struct bgp_peer *peer);
 static void bgp_set_retry(struct bgp_peer *peer);
-static void bgp_cidr(in_addr_t ip, in_addr_t mask, struct bgp_ip_prefix *pfx);
+static void bgp_cidr(in_addr_t ip, int prefixlen, struct bgp_ip_prefix *pfx);
 static struct bgp_route_list *bgp_insert_route(struct bgp_route_list *head,
     struct bgp_route_list *new);
 
@@ -327,26 +327,6 @@ static void bgp_set_retry(struct bgp_peer *peer)
     	bgp_halt(peer); /* give up */
 }
 
-/* convert ip/mask to CIDR notation */
-static void bgp_cidr(in_addr_t ip, in_addr_t mask, struct bgp_ip_prefix *pfx)
-{
-    int i;
-    uint32_t b;
-
-    /* convert to prefix notation */
-    pfx->len = 32;
-    pfx->prefix = ip;
-
-    if (!mask) /* bogus */
-	mask = 0xffffffff;
-
-    for (i = 0; i < 32 && ((b = ntohl(1 << i)), !(mask & b)); i++)
-    {
-	pfx->len--;
-	pfx->prefix &= ~b;
-    }
-}
-
 /* insert route into list; sorted */
 static struct bgp_route_list *bgp_insert_route(struct bgp_route_list *head,
     struct bgp_route_list *new)
@@ -381,13 +361,14 @@ static struct bgp_route_list *bgp_insert_route(struct bgp_route_list *head,
  * that if that route is later deleted we don't have to be concerned
  * about adding back the more specific one).
  */
-int bgp_add_route(in_addr_t ip, in_addr_t mask)
+int bgp_add_route(in_addr_t ip, int prefixlen)
 {
     struct bgp_route_list *r = bgp_routes;
     struct bgp_route_list add;
     int i;
 
-    bgp_cidr(ip, mask, &add.dest);
+    add.dest.prefix = ip;
+    add.dest.len = prefixlen;
     add.next = 0;
 
     /* check for duplicate */
@@ -427,14 +408,15 @@ int bgp_add_route(in_addr_t ip, in_addr_t mask)
 }
 
 /* remove route from list for peers */
-int bgp_del_route(in_addr_t ip, in_addr_t mask)
+int bgp_del_route(in_addr_t ip, int prefixlen)
 {
     struct bgp_route_list *r = bgp_routes;
     struct bgp_route_list *e = 0;
     struct bgp_route_list del;
     int i;
 
-    bgp_cidr(ip, mask, &del.dest);
+    del.dest.ip = ip;
+    del.dest.len = prefixlen;
     del.next = 0;
 
     /* find entry in routes list and remove */

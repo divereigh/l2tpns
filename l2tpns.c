@@ -723,7 +723,7 @@ static void inittun(void)
 		req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
 
 		ipv4_attr.rta.rta_len = RTA_LENGTH(sizeof(ipv4_attr.addr));
-		ipv4_attr.rta.rta_type = IFA_ADDRESS;
+		ipv4_attr.rta.rta_type = IFA_LOCAL;
 		ipv4_attr.addr.s_addr = config->bind_address ?
 			config->bind_address : 0x01010101; // 1.1.1.1
 		memcpy(NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifaddr), &ipv4_attr, sizeof(ipv4_attr));

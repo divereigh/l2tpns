@@ -577,10 +577,9 @@ static ssize_t netlink_recv(char *buf, ssize_t len)
 	return recvmsg(nlfd, &msg, 0);
 }
 
-static ssize_t netlink_check_ack(struct nlmsghdr *ack_nh, int msg_count)
+static ssize_t netlink_check_ack(struct nlmsghdr *ack_nh, ssize_t len, int msg_count)
 {
-	ssize_t len;
-	uint32_t seqnum;
+	uint32_t seqnum = 0;
 
 	// expect ack
 	for (; NLMSG_OK (ack_nh, len); ack_nh = NLMSG_NEXT (ack_nh, len))
@@ -600,6 +599,9 @@ static ssize_t netlink_check_ack(struct nlmsghdr *ack_nh, int msg_count)
 				--msg_count;
 				if (errmsg->msg.nlmsg_seq > seqnum);
 					seqnum = errmsg->msg.nlmsg_seq;
+				// if this is a single message, return now
+				if (!(ack_nh->nlmsg_flags & NLM_F_MULTI))
+					return msg_count != 0 || seqnum != nlseqnum;
 			}
 		}
 		else
@@ -617,6 +619,8 @@ static void inittun(void)
 	struct ifinfomsg ifinfo;
 	struct ifreq ifr;
 	char buf[4096];
+	ssize_t len;
+	struct nlmsghdr *resp_nh;
 
 	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_flags = IFF_TUN;
@@ -641,14 +645,12 @@ static void inittun(void)
 
 	{
 		// get the interface index
-		ssize_t len;
 		struct {
 			struct nlmsghdr nh;
 			struct ifinfomsg ifinfo __attribute__ ((aligned(NLMSG_ALIGNTO)));
 			struct rtattr ifname_rta __attribute__ ((aligned(RTA_ALIGNTO)));
 			char ifname[IFNAMSIZ];
 		} req;
-		struct nlmsghdr *resp_nh;
 
 		req.nh.nlmsg_type = RTM_GETLINK;
 		req.nh.nlmsg_flags = NLM_F_REQUEST;
@@ -659,6 +661,9 @@ static void inittun(void)
 		req.ifname_rta.rta_type = IFLA_IFNAME;
 		strncpy(req.ifname, config->tundevice, IFNAMSIZ-1);
 
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo)
+				+ req.ifname_rta.rta_len);
+
 		if(netlink_send(&req.nh, 0) < 0 || (len = netlink_recv(buf, sizeof(buf))) < 0)
 		{
 			LOG(0, 0, 0, "Error getting tun ifindex: %s\n", strerror(errno));
@@ -666,151 +671,188 @@ static void inittun(void)
 		}
 
 		resp_nh = (struct nlmsghdr *)buf;
-		if (NLMSG_OK (resp_nh, len) && resp_nh->nlmsg_type == RTM_GETLINK)
-		{
-			memcpy(&ifinfo, NLMSG_DATA(resp_nh), sizeof(ifinfo));
-			// got index
-			tunidx = ifinfo.ifi_index;
-		}
-		else
+		if (!NLMSG_OK (resp_nh, len))
 		{
 			LOG(0, 0, 0, "Malformed answer getting tun ifindex\n");
 			exit(1);
 		}
+
+		memcpy(&ifinfo, NLMSG_DATA(resp_nh), sizeof(ifinfo));
+		// got index
+		tunidx = ifinfo.ifi_index;
 	}
 	{
 		ssize_t err;
 		struct {
 			// interface setting
 			struct nlmsghdr nh;
-			struct ifinfomsg ifinfo __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr txqlen_rta __attribute__ ((aligned(RTA_ALIGNTO)));
-			uint32_t txqlen;
-			struct rtattr mtu_rta __attribute__ ((aligned(RTA_ALIGNTO)));
-			uint32_t mtu;
-
-			// IPv4 address
-			struct nlmsghdr addr_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct ifaddrmsg ifaddr __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr addr_rta __attribute__ ((aligned(RTA_ALIGNTO)));
-			struct in_addr addr;
-
-			// IPv6 LL address
-			struct nlmsghdr lladdr6_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct ifaddrmsg llifaddr6 __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr lladdr6_rta __attribute__ ((aligned(RTA_ALIGNTO)));
-			struct in6_addr lladdr6;
-
-			// IPv6 global address
-			struct nlmsghdr addr6_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct ifaddrmsg ifaddr6 __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr addr6_rta __attribute__ ((aligned(RTA_ALIGNTO)));
-			struct in6_addr addr6;
-
-			// end header
-			struct nlmsghdr end_nh __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			union {
+				struct ifinfomsg ifinfo;
+				struct ifaddrmsg ifaddr;
+			} ifmsg __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			char rtdata[32]; // 32 should be enough
 		} req;
-		char buf[4096];
+		struct {
+			struct rtattr rta;
+			uint32_t u32 __attribute__ ((aligned(RTA_ALIGNTO)));;
+		} u32_attr;
+		struct {
+			struct rtattr rta;
+			struct in_addr addr __attribute__ ((aligned(RTA_ALIGNTO)));;
+		} ipv4_attr;
+		struct {
+			struct rtattr rta;
+			struct in6_addr addr6 __attribute__ ((aligned(RTA_ALIGNTO)));;
+		} ipv6_attr;
+		char buf[256];
+		ssize_t buf_len;
+		char *buf_ptr;
 
 		memset(&req, 0, sizeof(req));
 
-		req.nh.nlmsg_type = RTM_NEWLINK;
-		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_REPLACE | NLM_F_MULTI;
+		req.nh.nlmsg_type = RTM_SETLINK;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_MULTI;
 
-		req.ifinfo = ifinfo;
-		req.ifinfo.ifi_flags |= IFF_UP; // set interface up
-		req.ifinfo.ifi_change = IFF_UP; // only change this flag
+		req.ifmsg.ifinfo = ifinfo;
+		req.ifmsg.ifinfo.ifi_flags |= IFF_UP; // set interface up
+		req.ifmsg.ifinfo.ifi_change = IFF_UP; // only change this flag
 
-		req.txqlen_rta.rta_len = RTA_LENGTH(sizeof(req.txqlen));
-		req.txqlen_rta.rta_type = IFLA_TXQLEN;
+		buf_ptr = NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifinfo);
+
+		u32_attr.rta.rta_len = RTA_LENGTH(sizeof(u32_attr.u32));
+		u32_attr.rta.rta_type = IFLA_TXQLEN;
 		/* Bump up the qlen to deal with bursts from the network */
-		req.txqlen = 1000;
+		u32_attr.u32 = 1000;
+		memcpy(buf_ptr, &u32_attr, sizeof(u32_attr));
 
-		req.mtu_rta.rta_len = RTA_LENGTH(sizeof(req.txqlen));
-		req.mtu_rta.rta_type = IFLA_MTU;
+		buf_ptr += RTA_ALIGN(u32_attr.rta.rta_len);
+
+		u32_attr.rta.rta_len = RTA_LENGTH(sizeof(u32_attr.u32));
+		u32_attr.rta.rta_type = IFLA_MTU;
 		/* set MTU to modem MRU */
-		req.mtu = MRU;
+		u32_attr.u32 = MRU;
+		memcpy(buf_ptr, &u32_attr, sizeof(u32_attr));
 
-		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo)
-				+ req.txqlen_rta.rta_len
-				+ req.mtu_rta.rta_len);
-
-		req.addr_nh.nlmsg_type = RTM_NEWADDR;
-		req.addr_nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
-
-		req.ifaddr.ifa_family = AF_INET;
-		req.ifaddr.ifa_prefixlen = 32;
-		req.ifaddr.ifa_index = ifinfo.ifi_index;
-
-		req.addr_rta.rta_len = RTA_LENGTH(sizeof(req.addr));
-		req.addr_rta.rta_type = IFA_ADDRESS;
-		req.addr.s_addr = config->bind_address ?
-			config->bind_address : 0x01010101; // 1.1.1.1
-
-		req.addr_nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifaddr)
-				+ req.addr_rta.rta_len);
-
-		// Only setup IPv6 on the tun device if we have a configured prefix
-		if (config->ipv6_prefix.s6_addr[0]) {
-			req.lladdr6_nh.nlmsg_type = RTM_NEWADDR;
-			req.lladdr6_nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
-
-			req.llifaddr6.ifa_family = AF_INET6;
-			req.llifaddr6.ifa_prefixlen = 64;
-			req.llifaddr6.ifa_scope = RT_SCOPE_LINK;
-			req.llifaddr6.ifa_index = ifinfo.ifi_index;
-
-			req.lladdr6_rta.rta_len = RTA_LENGTH(sizeof(req.lladdr6));
-			req.lladdr6_rta.rta_type = IFA_LOCAL;
-			// Link local address is FE80::1
-			memset(&req.lladdr6, 0, sizeof(req.lladdr6));
-			req.lladdr6.s6_addr[0] = 0xFE;
-			req.lladdr6.s6_addr[1] = 0x80;
-			req.lladdr6.s6_addr[15] = 1;
-
-			req.lladdr6_nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifaddr)
-					+ req.lladdr6_rta.rta_len);
-
-			req.addr6_nh.nlmsg_type = RTM_NEWADDR;
-			req.addr6_nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
-
-			req.ifaddr6.ifa_family = AF_INET6;
-			req.ifaddr6.ifa_prefixlen = 64;
-			req.ifaddr6.ifa_scope = RT_SCOPE_UNIVERSE;
-			req.ifaddr6.ifa_index = ifinfo.ifi_index;
-
-			req.addr6_rta.rta_len = RTA_LENGTH(sizeof(req.addr6));
-			req.addr6_rta.rta_type = IFA_LOCAL;
-			// Global address is prefix::1
-			req.addr6 = config->ipv6_prefix;
-			req.addr6.s6_addr[15] = 1;
-
-			req.lladdr6_nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifaddr)
-					+ req.lladdr6_rta.rta_len);
-
-			req.end_nh.nlmsg_type = NLMSG_DONE;
-			req.end_nh.nlmsg_len = NLMSG_LENGTH(0);
-		}
-		else
-		{
-			// we terminate at the beginning of IPv6 stuff
-			req.lladdr6_nh.nlmsg_type = NLMSG_DONE;
-			req.lladdr6_nh.nlmsg_len = NLMSG_LENGTH(0);
-		}
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifinfo)
+				+ u32_attr.rta.rta_len * 2);
 
 		if (netlink_send(&req.nh, 1) < 0)
 		{
-			LOG(0, 0, 0, "Error setting up tun device: %s\n", strerror(errno));
+			LOG(0, 0, 0, "Error setting up tun device interface: %s\n", strerror(errno));
 			exit(1);
 		}
 
-		if (netlink_recv(buf, sizeof(buf)) < 0)
+		memset(&req, 0, sizeof(req));
+
+		req.nh.nlmsg_type = RTM_NEWADDR;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+
+		req.ifmsg.ifaddr.ifa_family = AF_INET;
+		req.ifmsg.ifaddr.ifa_prefixlen = 32;
+		req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+
+		ipv4_attr.rta.rta_len = RTA_LENGTH(sizeof(ipv4_attr.addr));
+		ipv4_attr.rta.rta_type = IFA_ADDRESS;
+		ipv4_attr.addr.s_addr = config->bind_address ?
+			config->bind_address : 0x01010101; // 1.1.1.1
+		memcpy(NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifaddr), &ipv4_attr, sizeof(ipv4_attr));
+
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr)
+				+ ipv4_attr.rta.rta_len);
+
+		if (netlink_send(&req.nh, 1) < 0)
 		{
-			LOG(0, 0, 0, "Error waiting ack for setting up tun device: %s\n", strerror(errno));
+			LOG(0, 0, 0, "Error setting up tun device IPv4 address: %s\n", strerror(errno));
 			exit(1);
 		}
 
-		if ((err = netlink_check_ack((struct nlmsghdr *)buf, 4)))
+		memset(&req, 0, sizeof(req));
+
+		// Only setup IPv6 on the tun device if we have a configured prefix
+		if (config->ipv6_prefix.s6_addr[0]) {
+			req.nh.nlmsg_type = RTM_NEWADDR;
+			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+
+			req.ifmsg.ifaddr.ifa_family = AF_INET6;
+			req.ifmsg.ifaddr.ifa_prefixlen = 64;
+			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_LINK;
+			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+
+			ipv6_attr.rta.rta_len = RTA_LENGTH(sizeof(ipv6_attr.addr6));
+			ipv6_attr.rta.rta_type = IFA_LOCAL;
+			// Link local address is FE80::1
+			memset(&ipv6_attr.addr6, 0, sizeof(ipv6_attr.addr6));
+			ipv6_attr.addr6.s6_addr[0] = 0xFE;
+			ipv6_attr.addr6.s6_addr[1] = 0x80;
+			ipv6_attr.addr6.s6_addr[15] = 1;
+			memcpy(NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifaddr), &ipv6_attr, sizeof(ipv6_attr));
+
+			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr)
+					+ ipv6_attr.rta.rta_len);
+
+			if (netlink_send(&req.nh, 1) < 0)
+			{
+				LOG(0, 0, 0, "Error setting up tun device IPv6 LL address: %s\n", strerror(errno));
+				exit(1);
+			}
+
+			memset(&req, 0, sizeof(req));
+
+			req.nh.nlmsg_type = RTM_NEWADDR;
+			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+
+			req.ifmsg.ifaddr.ifa_family = AF_INET6;
+			req.ifmsg.ifaddr.ifa_prefixlen = 64;
+			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
+			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+
+			ipv6_attr.rta.rta_len = RTA_LENGTH(sizeof(ipv6_attr.addr6));
+			ipv6_attr.rta.rta_type = IFA_LOCAL;
+			// Global address is prefix::1
+			ipv6_attr.addr6 = config->ipv6_prefix;
+			ipv6_attr.addr6.s6_addr[15] = 1;
+			memcpy(NLMSG_DATA(&req.nh) + sizeof(req.ifmsg.ifaddr), &ipv6_attr, sizeof(ipv6_attr));
+
+			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr)
+					+ ipv6_attr.rta.rta_len);
+
+			if (netlink_send(&req.nh, 1) < 0)
+			{
+				LOG(0, 0, 0, "Error setting up tun device IPv6 global address: %s\n", strerror(errno));
+				exit(1);
+			}
+
+			memset(&req, 0, sizeof(req));
+		}
+
+		req.nh.nlmsg_type = NLMSG_DONE;
+		req.nh.nlmsg_len = NLMSG_LENGTH(0);
+
+		if (netlink_send(&req.nh, 1) < 0)
+		{
+			LOG(0, 0, 0, "Error finishing setting up tun device: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		buf_ptr = buf;
+		buf_len = sizeof(buf);
+		do
+		{
+			len = netlink_recv(buf_ptr, sizeof(buf_len));
+			if (len < 0)
+			{
+				LOG(0, 0, 0, "Error waiting for ack setting up tun device: %s\n", strerror(errno));
+				exit(1);
+			}
+
+			resp_nh = (struct nlmsghdr *)buf_ptr;
+			buf_len -= len;
+			buf_ptr += len;
+		}
+		while (buf_len > 0 && (resp_nh->nlmsg_flags & NLM_F_MULTI)
+				&& resp_nh->nlmsg_type != NLMSG_DONE);
+
+		if ((err = netlink_check_ack((struct nlmsghdr *)buf, buf_len, 4)))
 		{
 			if (err < 0)
 				LOG(0, 0, 0, "Error while receiving tun device ack: %s\n", strerror(errno));

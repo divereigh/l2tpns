@@ -935,6 +935,7 @@ struct event_data {
 	    	FD_TYPE_DAE,
 		FD_TYPE_RADIUS,
 		FD_TYPE_BGP,
+		FD_TYPE_NETLINK,
 	} type;
 	int index; // for RADIUS, BGP
 };

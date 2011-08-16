@@ -73,6 +73,7 @@ time_t basetime = 0;		// base clock
 char hostname[1000] = "";	// us.
 static int tunidx;		// ifr_ifindex of tun device
 int nlseqnum = 0;		// netlink sequence number
+int min_initok_nlseqnum = 0;	// minimun seq number for messages after init is ok
 static int syslog_log = 0;	// are we logging to syslog
 static FILE *log_stream = 0;	// file handle for direct logging (i.e. direct into file, not via syslog).
 uint32_t last_id = 0;		// Unique ID for radius accounting
@@ -559,7 +560,7 @@ static ssize_t netlink_send(struct nlmsghdr *nh)
 	return sendmsg(nlfd, &msg, 0);
 }
 
-static ssize_t netlink_recv(char *buf, ssize_t len)
+static ssize_t netlink_recv(void *buf, ssize_t len)
 {
 	struct sockaddr_nl nladdr;
 	struct iovec iov;
@@ -636,7 +637,7 @@ static void inittun(void)
 		resp_nh = (struct nlmsghdr *)buf;
 		if (!NLMSG_OK (resp_nh, len))
 		{
-			LOG(0, 0, 0, "Malformed answer getting tun ifindex %d\n", len);
+			LOG(0, 0, 0, "Malformed answer getting tun ifindex %ld\n", len);
 			exit(1);
 		}
 
@@ -793,6 +794,13 @@ static void inittun(void)
 			LOG(0, 0, 0, "Error finishing setting up tun device: %s\n", strerror(errno));
 			exit(1);
 		}
+
+		// if we get an error for seqnum < min_initok_nlseqnum,
+		// we must exit as initialization went wrong
+		if (config->ipv6_prefix.s6_addr[0])
+			min_initok_nlseqnum = 3 + 1; // idx + if + addr
+		else
+			min_initok_nlseqnum = 5 + 1; // idx + if + addr + 2*addr6
 	}
 }
 
@@ -3669,8 +3677,8 @@ static int still_busy(void)
 # include "fake_epoll.h"
 #endif
 
-// the base set of fds polled: cli, cluster, tun, udp, control, dae
-#define BASE_FDS	6
+// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink
+#define BASE_FDS	7
 
 // additional polled fds
 #ifdef BGP
@@ -3694,8 +3702,8 @@ static void mainloop(void)
 		exit(1);
 	}
 
-	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d\n",
-		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd);
+	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d\n",
+		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd);
 
 	/* setup our fds to poll for input */
 	{
@@ -3731,6 +3739,10 @@ static void mainloop(void)
 		d[i].type = FD_TYPE_DAE;
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, daefd, &e);
+
+		d[i].type = FD_TYPE_NETLINK;
+		e.data.ptr = &d[i++];
+		epoll_ctl(epollfd, EPOLL_CTL_ADD, nlfd, &e);
 	}
 
 #ifdef BGP
@@ -3866,6 +3878,27 @@ static void mainloop(void)
 				    	n--;
 					break;
 #endif /* BGP */
+
+				case FD_TYPE_NETLINK:
+				{
+					struct nlmsghdr *nh = (struct nlmsghdr *)buf;
+					s = netlink_recv(buf, sizeof(buf));
+					if (nh->nlmsg_type == NLMSG_ERROR)
+					{
+						struct nlmsgerr *errmsg = NLMSG_DATA(nh);
+						if (errmsg->error && errmsg->msg.nlmsg_seq < min_initok_nlseqnum)
+						{
+							LOG(0, 0, 0, "Got a fatal netlink error: seq %d flags %d code %d\n", nh->nlmsg_seq, nh->nlmsg_flags, errmsg->error);
+							exit(1);
+						}
+						else
+							LOG(1, 0, 0, "Got a netlink error: seq %d flags %d code %d\n", nh->nlmsg_seq, nh->nlmsg_flags, errmsg->error);
+					}
+					else
+						LOG(1, 0, 0, "Got a unknown netlink message: type %d seq %d flags %d\n", nh->nlmsg_type, nh->nlmsg_seq, nh->nlmsg_flags);
+					n--;
+					break;
+				}
 
 				default:
 				    	LOG(0, 0, 0, "Unexpected fd type returned from epoll_wait: %d\n", d->type);

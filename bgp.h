@@ -271,9 +271,9 @@ int bgp_start(struct bgp_peer *peer, char *name, int as, int keepalive,
 void bgp_stop(struct bgp_peer *peer);
 void bgp_halt(struct bgp_peer *peer);
 int bgp_restart(struct bgp_peer *peer);
-int bgp_add_route(in_addr_t ip, in_addr_t mask);
+int bgp_add_route(in_addr_t ip, int prefixlen);
 int bgp_add_route6(struct in6_addr ip, int prefixlen);
-int bgp_del_route(in_addr_t ip, in_addr_t mask);
+int bgp_del_route(in_addr_t ip, int prefixlen);
 int bgp_del_route6(struct in6_addr ip, int prefixlen);
 void bgp_enable_routing(int enable);
 int bgp_set_poll(void);

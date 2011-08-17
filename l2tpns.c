@@ -14,7 +14,6 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 #define SYSLOG_NAMES
 #include <syslog.h>
 #include <malloc.h>
-#include <math.h>
 #include <net/route.h>
 #include <sys/mman.h>
 #include <netdb.h>
@@ -39,6 +38,8 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 #include <sched.h>
 #include <sys/sysinfo.h>
 #include <libcli.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include "md5.h"
 #include "l2tpns.h"
@@ -56,6 +57,7 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 
 // Globals
 configt *config = NULL;		// all configuration
+int nlfd = -1;			// netlink socket
 int tunfd = -1;			// tun interface file handle. (network device)
 int udpfd = -1;			// UDP file handle
 int controlfd = -1;		// Control signal handle
@@ -63,14 +65,14 @@ int clifd = -1;			// Socket listening for CLI connections.
 int daefd = -1;			// Socket listening for DAE connections.
 int snoopfd = -1;		// UDP file handle for sending out intercept data
 int *radfds = NULL;		// RADIUS requests file handles
-int ifrfd = -1;			// File descriptor for routing, etc
-int ifr6fd = -1;		// File descriptor for IPv6 routing, etc
 int rand_fd = -1;		// Random data source
 int cluster_sockfd = -1;	// Intra-cluster communications socket.
 int epollfd = -1;		// event polling
 time_t basetime = 0;		// base clock
 char hostname[MAXHOSTNAME] = "";	// us.
 static int tunidx;		// ifr_ifindex of tun device
+int nlseqnum = 0;		// netlink sequence number
+int min_initok_nlseqnum = 0;	// minimun seq number for messages after init is ok
 static int syslog_log = 0;	// are we logging to syslog
 static FILE *log_stream = 0;	// file handle for direct logging (i.e. direct into file, not via syslog).
 uint32_t last_id = 0;		// Unique ID for radius accounting
@@ -199,6 +201,8 @@ struct Tstats *_statistics = NULL;
 struct Tringbuffer *ringbuffer = NULL;
 #endif
 
+static ssize_t netlink_send(struct nlmsghdr *nh);
+static void netlink_addattr(struct nlmsghdr *nh, int type, const void *data, int alen);
 static void cache_ipmap(in_addr_t ip, sessionidt s);
 static void uncache_ipmap(in_addr_t ip);
 static void cache_ipv6map(struct in6_addr ip, int prefixlen, sessionidt s);
@@ -418,43 +422,61 @@ void random_data(uint8_t *buf, int len)
 // via BGP if enabled, and stuffs it into the
 // 'sessionbyip' cache.
 //
-// 'ip' and 'mask' must be in _host_ order.
+// 'ip' must be in _host_ order.
 //
-static void routeset(sessionidt s, in_addr_t ip, in_addr_t mask, in_addr_t gw, int add)
+static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, int add)
 {
-	struct rtentry r;
+	struct {
+		struct nlmsghdr nh;
+		struct rtmsg rt;
+		char buf[32];
+	} req;
 	int i;
+	in_addr_t n_ip;
 
-	if (!mask) mask = 0xffffffff;
+	if (!prefixlen) prefixlen = 32;
 
-	ip &= mask;		// Force the ip to be the first one in the route.
+	ip &= 0xffffffff << (32 - prefixlen);;	// Force the ip to be the first one in the route.
 
-	memset(&r, 0, sizeof(r));
-	r.rt_dev = config->tundevice;
-	r.rt_dst.sa_family = AF_INET;
-	*(uint32_t *) & (((struct sockaddr_in *) &r.rt_dst)->sin_addr.s_addr) = htonl(ip);
-	r.rt_gateway.sa_family = AF_INET;
-	*(uint32_t *) & (((struct sockaddr_in *) &r.rt_gateway)->sin_addr.s_addr) = htonl(gw);
-	r.rt_genmask.sa_family = AF_INET;
-	*(uint32_t *) & (((struct sockaddr_in *) &r.rt_genmask)->sin_addr.s_addr) = htonl(mask);
-	r.rt_flags = (RTF_UP | RTF_STATIC);
+	memset(&req, 0, sizeof(req));
+
+	if (add)
+	{
+		req.nh.nlmsg_type = RTM_NEWROUTE;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
+	}
+	else
+		req.nh.nlmsg_type = RTM_DELROUTE;
+	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.rt));
+
+	req.rt.rtm_family = AF_INET;
+	req.rt.rtm_dst_len = prefixlen;
+	req.rt.rtm_table = RT_TABLE_MAIN;
+	req.rt.rtm_protocol = RTPROT_BOOT; // XXX
+	req.rt.rtm_scope = RT_SCOPE_LINK;
+	req.rt.rtm_type = RTN_UNICAST;
+
+	netlink_addattr(&req.nh, RTA_OIF, &tunidx, sizeof(int));
+	n_ip = htonl(ip);
+	netlink_addattr(&req.nh, RTA_DST, &n_ip, sizeof(n_ip));
 	if (gw)
-		r.rt_flags |= RTF_GATEWAY;
-	else if (mask == 0xffffffff)
-		r.rt_flags |= RTF_HOST;
+	{
+		n_ip = htonl(gw);
+		netlink_addattr(&req.nh, RTA_GATEWAY, &n_ip, sizeof(n_ip));
+	}
 
-	LOG(1, s, 0, "Route %s %s/%s%s%s\n", add ? "add" : "del",
-	    fmtaddr(htonl(ip), 0), fmtaddr(htonl(mask), 1),
+	LOG(1, s, 0, "Route %s %s/%d%s%s\n", add ? "add" : "del",
+	    fmtaddr(htonl(ip), 0), prefixlen,
 	    gw ? " via" : "", gw ? fmtaddr(htonl(gw), 2) : "");
 
-	if (ioctl(ifrfd, add ? SIOCADDRT : SIOCDELRT, (void *) &r) < 0)
-		LOG(0, 0, 0, "routeset() error in ioctl: %s\n", strerror(errno));
+	if (netlink_send(&req.nh) < 0)
+		LOG(0, 0, 0, "routeset() error in sending netlink message: %s\n", strerror(errno));
 
 #ifdef BGP
 	if (add)
-		bgp_add_route(htonl(ip), htonl(mask));
+		bgp_add_route(htonl(ip), prefixlen);
 	else
-		bgp_del_route(htonl(ip), htonl(mask));
+		bgp_del_route(htonl(ip), prefixlen);
 #endif /* BGP */
 
 		// Add/Remove the IPs to the 'sessionbyip' cache.
@@ -470,38 +492,57 @@ static void routeset(sessionidt s, in_addr_t ip, in_addr_t mask, in_addr_t gw, i
 		if (!add)	// Are we deleting a route?
 			s = 0;	// Caching the session as '0' is the same as uncaching.
 
-		for (i = ip; (i&mask) == (ip&mask) ; ++i)
+		for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
 			cache_ipmap(i, s);
 	}
 }
 
 void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 {
-	struct in6_rtmsg rt;
+	struct {
+		struct nlmsghdr nh;
+		struct rtmsg rt;
+		char buf[64];
+	} req;
+	int metric;
 	char ipv6addr[INET6_ADDRSTRLEN];
 
-	if (ifr6fd < 0)
+	if (!config->ipv6_prefix.s6_addr[0])
 	{
 		LOG(0, 0, 0, "Asked to set IPv6 route, but IPv6 not setup.\n");
 		return;
 	}
 
-	memset(&rt, 0, sizeof(rt));
+	memset(&req, 0, sizeof(req));
 
-	memcpy(&rt.rtmsg_dst, &ip, sizeof(struct in6_addr));
-	rt.rtmsg_dst_len = prefixlen;
-	rt.rtmsg_metric = 1;
-	rt.rtmsg_flags = RTF_UP;
-	rt.rtmsg_ifindex = tunidx;
+	if (add)
+	{
+		req.nh.nlmsg_type = RTM_NEWROUTE;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
+	}
+	else
+		req.nh.nlmsg_type = RTM_DELROUTE;
+	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.rt));
+
+	req.rt.rtm_family = AF_INET6;
+	req.rt.rtm_dst_len = prefixlen;
+	req.rt.rtm_table = RT_TABLE_MAIN;
+	req.rt.rtm_protocol = RTPROT_BOOT; // XXX
+	req.rt.rtm_scope = RT_SCOPE_LINK;
+	req.rt.rtm_type = RTN_UNICAST;
+
+	netlink_addattr(&req.nh, RTA_OIF, &tunidx, sizeof(int));
+	netlink_addattr(&req.nh, RTA_DST, &ip, sizeof(ip));
+	metric = 1;
+	netlink_addattr(&req.nh, RTA_METRICS, &metric, sizeof(metric));
 
 	LOG(1, 0, 0, "Route %s %s/%d\n",
 	    add ? "add" : "del",
 	    inet_ntop(AF_INET6, &ip, ipv6addr, INET6_ADDRSTRLEN),
 	    prefixlen);
 
-	if (ioctl(ifr6fd, add ? SIOCADDRT : SIOCDELRT, (void *) &rt) < 0)
-		LOG(0, 0, 0, "route6set() error in ioctl: %s\n",
-				strerror(errno));
+	if (netlink_send(&req.nh) < 0)
+		LOG(0, 0, 0, "route6set() error in sending netlink message: %s\n", strerror(errno));
 
 #ifdef BGP
 	if (add)
@@ -521,21 +562,95 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 	return;
 }
 
-// defined in linux/ipv6.h, but tricky to include from user-space
-// TODO: move routing to use netlink rather than ioctl
-struct in6_ifreq {
-	struct in6_addr ifr6_addr;
-	__u32 ifr6_prefixlen;
-	unsigned int ifr6_ifindex;
+//
+// Set up netlink socket
+static void initnetlink(void)
+{
+	struct sockaddr_nl nladdr;
+
+	nlfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (nlfd < 0)
+	{
+		LOG(0, 0, 0, "Can't create netlink socket: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	memset(&nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+	nladdr.nl_pid = getpid();
+
+	if (bind(nlfd, (struct sockaddr *)&nladdr, sizeof(nladdr)) < 0)
+	{
+		LOG(0, 0, 0, "Can't bind netlink socket: %s\n", strerror(errno));
+		exit(1);
+	}
+}
+
+static ssize_t netlink_send(struct nlmsghdr *nh)
+{
+	struct sockaddr_nl nladdr;
+	struct iovec iov;
+	struct msghdr msg;
+
+	nh->nlmsg_pid = getpid();
+	nh->nlmsg_seq = ++nlseqnum;
+
+	// set kernel address
+	memset(&nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+
+	iov = (struct iovec){ (void *)nh, nh->nlmsg_len };
+	msg = (struct msghdr){ (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
+
+	return sendmsg(nlfd, &msg, 0);
+}
+
+static ssize_t netlink_recv(void *buf, ssize_t len)
+{
+	struct sockaddr_nl nladdr;
+	struct iovec iov;
+	struct msghdr msg;
+
+	// set kernel address
+	memset(&nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+
+	iov = (struct iovec){ buf, len };
+	msg = (struct msghdr){ (void *)&nladdr, sizeof(nladdr), &iov, 1, NULL, 0, 0 };
+
+	return recvmsg(nlfd, &msg, 0);
+}
+
+/* adapted from iproute2 */
+static void netlink_addattr(struct nlmsghdr *nh, int type, const void *data, int alen)
+{
+	int len = RTA_LENGTH(alen);
+	struct rtattr *rta;
+
+	rta = (struct rtattr *)(((void *)nh) + NLMSG_ALIGN(nh->nlmsg_len));
+	rta->rta_type = type;
+	rta->rta_len = len;
+	memcpy(RTA_DATA(rta), data, alen);
+	nh->nlmsg_len = NLMSG_ALIGN(nh->nlmsg_len) + RTA_ALIGN(len);
+}
+
+// messages corresponding to different phases seq number
+static char *tun_nl_phase_msg[] = {
+	"initialized",
+	"getting tun interface index",
+	"setting tun interface parameters",
+	"setting tun IPv4 address",
+	"setting tun LL IPv6 address",
+	"setting tun global IPv6 address",
 };
 
 //
 // Set up TUN interface
 static void inittun(void)
 {
+	struct ifinfomsg ifinfo;
 	struct ifreq ifr;
-	struct in6_ifreq ifr6;
-	struct sockaddr_in sin = {0};
+
 	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_flags = IFF_TUN;
 
@@ -554,75 +669,163 @@ static void inittun(void)
 		LOG(0, 0, 0, "Can't set tun interface: %s\n", strerror(errno));
 		exit(1);
 	}
-	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice));
-	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice) - 1);
-	ifrfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
+	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice) - 1);
+	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice));
 
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = config->bind_address ? config->bind_address : 0x01010101; // 1.1.1.1
-	memcpy(&ifr.ifr_addr, &sin, sizeof(struct sockaddr));
+	{
+		// get the interface index
+		struct {
+			struct nlmsghdr nh;
+			struct ifinfomsg ifinfo;
+		} req;
+		char buf[4096];
+		ssize_t len;
+		struct nlmsghdr *resp_nh;
 
-	if (ioctl(ifrfd, SIOCSIFADDR, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun address: %s\n", strerror(errno));
-		exit(1);
-	}
-	/* Bump up the qlen to deal with bursts from the network */
-	ifr.ifr_qlen = 1000;
-	if (ioctl(ifrfd, SIOCSIFTXQLEN, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun queue length: %s\n", strerror(errno));
-		exit(1);
-	}
-	/* set MTU to modem MRU */
-	ifr.ifr_mtu = MRU;
-	if (ioctl(ifrfd, SIOCSIFMTU, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun MTU: %s\n", strerror(errno));
-		exit(1);
-	}
-	ifr.ifr_flags = IFF_UP;
-	if (ioctl(ifrfd, SIOCSIFFLAGS, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error setting tun flags: %s\n", strerror(errno));
-		exit(1);
-	}
-	if (ioctl(ifrfd, SIOCGIFINDEX, (void *) &ifr) < 0)
-	{
-		LOG(0, 0, 0, "Error getting tun ifindex: %s\n", strerror(errno));
-		exit(1);
-	}
-	tunidx = ifr.ifr_ifindex;
+		req.nh.nlmsg_type = RTM_GETLINK;
+		req.nh.nlmsg_flags = NLM_F_REQUEST;
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo));
 
-	// Only setup IPv6 on the tun device if we have a configured prefix
-	if (config->ipv6_prefix.s6_addr[0]) {
-		ifr6fd = socket(PF_INET6, SOCK_DGRAM, 0);
+		req.ifinfo.ifi_family = AF_UNSPEC; // as the man says
 
-		// Link local address is FE80::1
-		memset(&ifr6.ifr6_addr, 0, sizeof(ifr6.ifr6_addr));
-		ifr6.ifr6_addr.s6_addr[0] = 0xFE;
-		ifr6.ifr6_addr.s6_addr[1] = 0x80;
-		ifr6.ifr6_addr.s6_addr[15] = 1;
-		ifr6.ifr6_prefixlen = 64;
-		ifr6.ifr6_ifindex = ifr.ifr_ifindex;
-		if (ioctl(ifr6fd, SIOCSIFADDR, (void *) &ifr6) < 0)
+		netlink_addattr(&req.nh, IFLA_IFNAME, config->tundevice, strlen(config->tundevice)+1);
+
+		if(netlink_send(&req.nh) < 0 || (len = netlink_recv(buf, sizeof(buf))) < 0)
 		{
-			LOG(0, 0, 0, "Error setting tun IPv6 link local address:"
-				" %s\n", strerror(errno));
+			LOG(0, 0, 0, "Error getting tun ifindex: %s\n", strerror(errno));
+			exit(1);
 		}
 
-		// Global address is prefix::1
-		memset(&ifr6.ifr6_addr, 0, sizeof(ifr6.ifr6_addr));
-		ifr6.ifr6_addr = config->ipv6_prefix;
-		ifr6.ifr6_addr.s6_addr[15] = 1;
-		ifr6.ifr6_prefixlen = 64;
-		ifr6.ifr6_ifindex = ifr.ifr_ifindex;
-		if (ioctl(ifr6fd, SIOCSIFADDR, (void *) &ifr6) < 0)
+		resp_nh = (struct nlmsghdr *)buf;
+		if (!NLMSG_OK (resp_nh, len))
 		{
-			LOG(0, 0, 0, "Error setting tun IPv6 global address: %s\n",
-				strerror(errno));
+			LOG(0, 0, 0, "Malformed answer getting tun ifindex %ld\n", len);
+			exit(1);
 		}
+
+		memcpy(&ifinfo, NLMSG_DATA(resp_nh), sizeof(ifinfo));
+		// got index
+		tunidx = ifinfo.ifi_index;
 	}
+	{
+		struct {
+			// interface setting
+			struct nlmsghdr nh;
+			union {
+				struct ifinfomsg ifinfo;
+				struct ifaddrmsg ifaddr;
+			} ifmsg;
+			char rtdata[32]; // 32 should be enough
+		} req;
+		uint32_t txqlen, mtu;
+		in_addr_t ip;
+
+		memset(&req, 0, sizeof(req));
+
+		req.nh.nlmsg_type = RTM_SETLINK;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_MULTI;
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifinfo));
+
+		req.ifmsg.ifinfo = ifinfo;
+		req.ifmsg.ifinfo.ifi_flags |= IFF_UP; // set interface up
+		req.ifmsg.ifinfo.ifi_change = IFF_UP; // only change this flag
+
+		/* Bump up the qlen to deal with bursts from the network */
+		txqlen = 1000;
+		netlink_addattr(&req.nh, IFLA_TXQLEN, &txqlen, sizeof(txqlen));
+		/* set MTU to modem MRU */
+		mtu = MRU;
+		netlink_addattr(&req.nh, IFLA_MTU, &mtu, sizeof(mtu));
+
+		if (netlink_send(&req.nh) < 0)
+			goto senderror;
+
+		memset(&req, 0, sizeof(req));
+
+		req.nh.nlmsg_type = RTM_NEWADDR;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_MULTI;
+		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
+
+		req.ifmsg.ifaddr.ifa_family = AF_INET;
+		req.ifmsg.ifaddr.ifa_prefixlen = 32;
+		req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
+		req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+
+		if (config->bind_address)
+			ip = config->bind_address;
+		else
+			ip = 0x01010101; // 1.1.1.1
+		netlink_addattr(&req.nh, IFA_LOCAL, &ip, sizeof(ip));
+
+		if (netlink_send(&req.nh) < 0)
+			goto senderror;
+
+		// Only setup IPv6 on the tun device if we have a configured prefix
+		if (config->ipv6_prefix.s6_addr[0]) {
+			struct in6_addr ip6;
+
+			memset(&req, 0, sizeof(req));
+
+			req.nh.nlmsg_type = RTM_NEWADDR;
+			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_MULTI;
+			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
+
+			req.ifmsg.ifaddr.ifa_family = AF_INET6;
+			req.ifmsg.ifaddr.ifa_prefixlen = 64;
+			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_LINK;
+			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+
+			// Link local address is FE80::1
+			memset(&ip6, 0, sizeof(ip6));
+			ip6.s6_addr[0] = 0xFE;
+			ip6.s6_addr[1] = 0x80;
+			ip6.s6_addr[15] = 1;
+			netlink_addattr(&req.nh, IFA_LOCAL, &ip6, sizeof(ip6));
+
+			if (netlink_send(&req.nh) < 0)
+				goto senderror;
+
+			memset(&req, 0, sizeof(req));
+
+			req.nh.nlmsg_type = RTM_NEWADDR;
+			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_MULTI;
+			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
+
+			req.ifmsg.ifaddr.ifa_family = AF_INET6;
+			req.ifmsg.ifaddr.ifa_prefixlen = 64;
+			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
+			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+
+			// Global address is prefix::1
+			ip6 = config->ipv6_prefix;
+			ip6.s6_addr[15] = 1;
+			netlink_addattr(&req.nh, IFA_LOCAL, &ip6, sizeof(ip6));
+
+			if (netlink_send(&req.nh) < 0)
+				goto senderror;
+		}
+
+		memset(&req, 0, sizeof(req));
+
+		req.nh.nlmsg_type = NLMSG_DONE;
+		req.nh.nlmsg_len = NLMSG_LENGTH(0);
+
+		if (netlink_send(&req.nh) < 0)
+			goto senderror;
+
+		// if we get an error for seqnum < min_initok_nlseqnum,
+		// we must exit as initialization went wrong
+		if (config->ipv6_prefix.s6_addr[0])
+			min_initok_nlseqnum = 5 + 1; // idx + if + addr + 2*addr6
+		else
+			min_initok_nlseqnum = 3 + 1; // idx + if + addr
+	}
+
+	return;
+
+senderror:
+	LOG(0, 0, 0, "Error while setting up tun device: %s\n", strerror(errno));
+	exit(1);
 }
 
 // set up UDP ports
@@ -1768,11 +1971,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		int routed = 0;
 		for (r = 0; r < MAXROUTE && session[s].route[r].ip; r++)
 		{
-			if ((session[s].ip & session[s].route[r].mask) ==
-			    (session[s].route[r].ip & session[s].route[r].mask))
+			if ((session[s].ip >> (32-session[s].route[r].prefixlen)) ==
+			    (session[s].route[r].ip >> (32-session[s].route[r].prefixlen)))
 				routed++;
 
-			if (del_routes) routeset(s, session[s].route[r].ip, session[s].route[r].mask, 0, 0);
+			if (del_routes) routeset(s, session[s].route[r].ip, session[s].route[r].prefixlen, 0, 0);
 			session[s].route[r].ip = 0;
 		}
 
@@ -3499,8 +3702,8 @@ static int still_busy(void)
 # include "fake_epoll.h"
 #endif
 
-// the base set of fds polled: cli, cluster, tun, udp, control, dae
-#define BASE_FDS	6
+// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink
+#define BASE_FDS	7
 
 // additional polled fds
 #ifdef BGP
@@ -3524,8 +3727,8 @@ static void mainloop(void)
 		exit(1);
 	}
 
-	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d\n",
-		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd);
+	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d\n",
+		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd);
 
 	/* setup our fds to poll for input */
 	{
@@ -3561,6 +3764,10 @@ static void mainloop(void)
 		d[i].type = FD_TYPE_DAE;
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, daefd, &e);
+
+		d[i].type = FD_TYPE_NETLINK;
+		e.data.ptr = &d[i++];
+		epoll_ctl(epollfd, EPOLL_CTL_ADD, nlfd, &e);
 	}
 
 #ifdef BGP
@@ -3697,6 +3904,32 @@ static void mainloop(void)
 				    	n--;
 					break;
 #endif /* BGP */
+
+				case FD_TYPE_NETLINK:
+				{
+					struct nlmsghdr *nh = (struct nlmsghdr *)buf;
+					s = netlink_recv(buf, sizeof(buf));
+					if (nh->nlmsg_type == NLMSG_ERROR)
+					{
+						struct nlmsgerr *errmsg = NLMSG_DATA(nh);
+						if (errmsg->error)
+						{
+							if (errmsg->msg.nlmsg_seq < min_initok_nlseqnum)
+							{
+								LOG(0, 0, 0, "Got a fatal netlink error (while %s): %s\n", tun_nl_phase_msg[nh->nlmsg_seq], strerror(-errmsg->error));
+								exit(1);
+							}
+							else
+
+								LOG(0, 0, 0, "Got a netlink error: %s\n", strerror(-errmsg->error));
+						}
+						// else it's a ack
+					}
+					else
+						LOG(1, 0, 0, "Got a unknown netlink message: type %d seq %d flags %d\n", nh->nlmsg_type, nh->nlmsg_seq, nh->nlmsg_flags);
+					n--;
+					break;
+				}
 
 				default:
 				    	LOG(0, 0, 0, "Unexpected fd type returned from epoll_wait: %d\n", d->type);
@@ -4266,18 +4499,18 @@ static void fix_address_pool(int sid)
 //
 // Add a block of addresses to the IP pool to hand out.
 //
-static void add_to_ip_pool(in_addr_t addr, in_addr_t mask)
+static void add_to_ip_pool(in_addr_t addr, int prefixlen)
 {
 	int i;
-	if (mask == 0)
-		mask = 0xffffffff;	// Host route only.
+	if (prefixlen == 0)
+		prefixlen = 32;		// Host route only.
 
-	addr &= mask;
+	addr &= 0xffffffff << (32 - prefixlen);
 
 	if (ip_pool_size >= MAXIPPOOL)	// Pool is full!
 		return ;
 
-	for (i = addr ;(i & mask) == addr; ++i)
+	for (i = addr ; i < addr+(1<<(32-prefixlen)); ++i)
 	{
 		if ((i & 0xff) == 0 || (i&0xff) == 255)
 			continue;	// Skip 0 and broadcast addresses.
@@ -4335,7 +4568,7 @@ static void initippool()
 		{
 			// It's a range
 			int numbits = 0;
-			in_addr_t start = 0, mask = 0;
+			in_addr_t start = 0;
 
 			LOG(2, 0, 0, "Adding IP address range %s\n", buf);
 			*p++ = 0;
@@ -4345,15 +4578,14 @@ static void initippool()
 				continue;
 			}
 			start = ntohl(inet_addr(pool));
-			mask = (in_addr_t) (pow(2, numbits) - 1) << (32 - numbits);
 
 			// Add a static route for this pool
-			LOG(5, 0, 0, "Adding route for address pool %s/%u\n",
-				fmtaddr(htonl(start), 0), 32 + mask);
+			LOG(5, 0, 0, "Adding route for address pool %s/%d\n",
+				fmtaddr(htonl(start), 0), numbits);
 
-			routeset(0, start, mask, 0, 1);
+			routeset(0, start, numbits, 0, 1);
 
-			add_to_ip_pool(start, mask);
+			add_to_ip_pool(start, numbits);
 		}
 		else
 		{
@@ -4548,6 +4780,8 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+
+	initnetlink();
 
 	/* Set up the cluster communications port. */
 	if (cluster_init() < 0)
@@ -5000,11 +5234,11 @@ int sessionsetup(sessionidt s, tunnelidt t)
 		// Add the route for this session.
 		for (r = 0; r < MAXROUTE && session[s].route[r].ip; r++)
 		{
-			if ((session[s].ip & session[s].route[r].mask) ==
-			    (session[s].route[r].ip & session[s].route[r].mask))
+			if ((session[s].ip >> (32-session[s].route[r].prefixlen)) ==
+			    (session[s].route[r].ip >> (32-session[s].route[r].prefixlen)))
 				routed++;
 
-			routeset(s, session[s].route[r].ip, session[s].route[r].mask, 0, 1);
+			routeset(s, session[s].route[r].ip, session[s].route[r].prefixlen, 0, 1);
 		}
 
 		// Static IPs need to be routed if not already
@@ -5075,7 +5309,7 @@ int load_session(sessionidt s, sessiont *new)
 
 	for (i = 0; !newip && i < MAXROUTE && (session[s].route[i].ip || new->route[i].ip); i++)
 		if (new->route[i].ip != session[s].route[i].ip ||
-		    new->route[i].mask != session[s].route[i].mask)
+		    new->route[i].prefixlen != session[s].route[i].prefixlen)
 			newip++;
 
 	// needs update
@@ -5086,11 +5320,11 @@ int load_session(sessionidt s, sessiont *new)
 		// remove old routes...
 		for (i = 0; i < MAXROUTE && session[s].route[i].ip; i++)
 		{
-			if ((session[s].ip & session[s].route[i].mask) ==
-			    (session[s].route[i].ip & session[s].route[i].mask))
+			if ((session[s].ip >> (32-session[s].route[i].prefixlen)) ==
+			    (session[s].route[i].ip >> (32-session[s].route[i].prefixlen)))
 				routed++;
 
-			routeset(s, session[s].route[i].ip, session[s].route[i].mask, 0, 0);
+			routeset(s, session[s].route[i].ip, session[s].route[i].prefixlen, 0, 0);
 		}
 
 		// ...ip
@@ -5109,11 +5343,11 @@ int load_session(sessionidt s, sessiont *new)
 		// add new routes...
 		for (i = 0; i < MAXROUTE && new->route[i].ip; i++)
 		{
-			if ((new->ip & new->route[i].mask) ==
-			    (new->route[i].ip & new->route[i].mask))
+			if ((new->ip >> (32-new->route[i].prefixlen)) ==
+			    (new->route[i].ip >> (32-new->route[i].prefixlen)))
 				routed++;
 
-			routeset(s, new->route[i].ip, new->route[i].mask, 0, 1);
+			routeset(s, new->route[i].ip, new->route[i].prefixlen, 0, 1);
 		}
 
 		// ...ip

@@ -14,7 +14,6 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 #define SYSLOG_NAMES
 #include <syslog.h>
 #include <malloc.h>
-#include <math.h>
 #include <net/route.h>
 #include <sys/mman.h>
 #include <netdb.h>

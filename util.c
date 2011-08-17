@@ -81,8 +81,6 @@ pid_t fork_and_close()
     if (controlfd != -1)      close(controlfd);
     if (daefd != -1)          close(daefd);
     if (snoopfd != -1)        close(snoopfd);
-    if (ifrfd != -1)          close(ifrfd);
-    if (ifr6fd != -1)         close(ifr6fd);
     if (rand_fd != -1)        close(rand_fd);
     if (epollfd != -1)        close(epollfd);
 

@@ -200,6 +200,8 @@ struct Tstats *_statistics = NULL;
 struct Tringbuffer *ringbuffer = NULL;
 #endif
 
+static ssize_t netlink_send(struct nlmsghdr *nh);
+static void netlink_addattr(struct nlmsghdr *nh, int type, const void *data, int alen);
 static void cache_ipmap(in_addr_t ip, sessionidt s);
 static void uncache_ipmap(in_addr_t ip);
 static void cache_ipv6map(struct in6_addr ip, int prefixlen, sessionidt s);
@@ -423,36 +425,51 @@ void random_data(uint8_t *buf, int len)
 //
 static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, int add)
 {
-	struct rtentry r;
-	in_addr_t mask;
+	struct {
+		struct nlmsghdr nh;
+		struct rtmsg rt;
+		char buf[32];
+	} req;
 	int i;
+	in_addr_t n_ip;
 
 	if (!prefixlen) prefixlen = 32;
 
-	mask = 0xffffffff << (32 - prefixlen);
+	ip &= 0xffffffff << (32 - prefixlen);;	// Force the ip to be the first one in the route.
 
-	ip &= mask;	// Force the ip to be the first one in the route.
+	memset(&req, 0, sizeof(req));
 
-	memset(&r, 0, sizeof(r));
-	r.rt_dev = config->tundevice;
-	r.rt_dst.sa_family = AF_INET;
-	*(uint32_t *) & (((struct sockaddr_in *) &r.rt_dst)->sin_addr.s_addr) = htonl(ip);
-	r.rt_gateway.sa_family = AF_INET;
-	*(uint32_t *) & (((struct sockaddr_in *) &r.rt_gateway)->sin_addr.s_addr) = htonl(gw);
-	r.rt_genmask.sa_family = AF_INET;
-	*(uint32_t *) & (((struct sockaddr_in *) &r.rt_genmask)->sin_addr.s_addr) = htonl(mask);
-	r.rt_flags = (RTF_UP | RTF_STATIC);
+	if (add)
+	{
+		req.nh.nlmsg_type = RTM_NEWROUTE;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
+	}
+	else
+		req.nh.nlmsg_type = RTM_DELROUTE;
+	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.rt));
+
+	req.rt.rtm_family = AF_INET;
+	req.rt.rtm_dst_len = prefixlen;
+	req.rt.rtm_table = RT_TABLE_MAIN;
+	req.rt.rtm_protocol = RTPROT_BOOT; // XXX
+	req.rt.rtm_scope = RT_SCOPE_LINK;
+	req.rt.rtm_type = RTN_UNICAST;
+
+	netlink_addattr(&req.nh, RTA_OIF, &tunidx, sizeof(int));
+	n_ip = htonl(ip);
+	netlink_addattr(&req.nh, RTA_DST, &n_ip, sizeof(n_ip));
 	if (gw)
-		r.rt_flags |= RTF_GATEWAY;
-	else if (prefixlen == 32)
-		r.rt_flags |= RTF_HOST;
+	{
+		n_ip = htonl(gw);
+		netlink_addattr(&req.nh, RTA_GATEWAY, &n_ip, sizeof(n_ip));
+	}
 
 	LOG(1, s, 0, "Route %s %s/%d%s%s\n", add ? "add" : "del",
 	    fmtaddr(htonl(ip), 0), prefixlen,
 	    gw ? " via" : "", gw ? fmtaddr(htonl(gw), 2) : "");
 
-	if (ioctl(ifrfd, add ? SIOCADDRT : SIOCDELRT, (void *) &r) < 0)
-		LOG(0, 0, 0, "routeset() error in ioctl: %s\n", strerror(errno));
+	if (netlink_send(&req.nh) < 0)
+		LOG(0, 0, 0, "routeset() error in sending netlink message: %s\n", strerror(errno));
 
 #ifdef BGP
 	if (add)
@@ -481,31 +498,50 @@ static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, in
 
 void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 {
-	struct in6_rtmsg rt;
+	struct {
+		struct nlmsghdr nh;
+		struct rtmsg rt;
+		char buf[64];
+	} req;
+	int metric;
 	char ipv6addr[INET6_ADDRSTRLEN];
 
-	if (ifr6fd < 0)
+	if (!config->ipv6_prefix.s6_addr[0])
 	{
 		LOG(0, 0, 0, "Asked to set IPv6 route, but IPv6 not setup.\n");
 		return;
 	}
 
-	memset(&rt, 0, sizeof(rt));
+	memset(&req, 0, sizeof(req));
 
-	memcpy(&rt.rtmsg_dst, &ip, sizeof(struct in6_addr));
-	rt.rtmsg_dst_len = prefixlen;
-	rt.rtmsg_metric = 1;
-	rt.rtmsg_flags = RTF_UP;
-	rt.rtmsg_ifindex = tunidx;
+	if (add)
+	{
+		req.nh.nlmsg_type = RTM_NEWROUTE;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
+	}
+	else
+		req.nh.nlmsg_type = RTM_DELROUTE;
+	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.rt));
+
+	req.rt.rtm_family = AF_INET6;
+	req.rt.rtm_dst_len = prefixlen;
+	req.rt.rtm_table = RT_TABLE_MAIN;
+	req.rt.rtm_protocol = RTPROT_BOOT; // XXX
+	req.rt.rtm_scope = RT_SCOPE_LINK;
+	req.rt.rtm_type = RTN_UNICAST;
+
+	netlink_addattr(&req.nh, RTA_OIF, &tunidx, sizeof(int));
+	netlink_addattr(&req.nh, RTA_DST, &ip, sizeof(ip));
+	metric = 1;
+	netlink_addattr(&req.nh, RTA_METRICS, &metric, sizeof(metric));
 
 	LOG(1, 0, 0, "Route %s %s/%d\n",
 	    add ? "add" : "del",
 	    inet_ntop(AF_INET6, &ip, ipv6addr, INET6_ADDRSTRLEN),
 	    prefixlen);
 
-	if (ioctl(ifr6fd, add ? SIOCADDRT : SIOCDELRT, (void *) &rt) < 0)
-		LOG(0, 0, 0, "route6set() error in ioctl: %s\n",
-				strerror(errno));
+	if (netlink_send(&req.nh) < 0)
+		LOG(0, 0, 0, "route6set() error in sending netlink message: %s\n", strerror(errno));
 
 	// FIXME: need to add BGP routing (RFC2858)
 
@@ -580,7 +616,7 @@ static ssize_t netlink_recv(void *buf, ssize_t len)
 }
 
 /* adapted from iproute2 */
-void netlink_addattr(struct nlmsghdr *nh, int type, const void *data, int alen)
+static void netlink_addattr(struct nlmsghdr *nh, int type, const void *data, int alen)
 {
 	int len = RTA_LENGTH(alen);
 	struct rtattr *rta;
@@ -634,9 +670,7 @@ static void inittun(void)
 		// get the interface index
 		struct {
 			struct nlmsghdr nh;
-			struct ifinfomsg ifinfo __attribute__ ((aligned(NLMSG_ALIGNTO)));
-			struct rtattr ifname_rta __attribute__ ((aligned(RTA_ALIGNTO)));
-			char ifname[IFNAMSIZ];
+			struct ifinfomsg ifinfo;
 		} req;
 		char buf[4096];
 		ssize_t len;
@@ -674,7 +708,7 @@ static void inittun(void)
 			union {
 				struct ifinfomsg ifinfo;
 				struct ifaddrmsg ifaddr;
-			} ifmsg __attribute__ ((aligned(NLMSG_ALIGNTO)));
+			} ifmsg;
 			char rtdata[32]; // 32 should be enough
 		} req;
 		uint32_t txqlen, mtu;

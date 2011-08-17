@@ -415,7 +415,7 @@ int bgp_del_route(in_addr_t ip, int prefixlen)
     struct bgp_route_list del;
     int i;
 
-    del.dest.ip = ip;
+    del.dest.prefix = ip;
     del.dest.len = prefixlen;
     del.next = 0;
 

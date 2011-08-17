@@ -723,7 +723,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 						else if (ip)
 						{
 							LOG(3, s, session[s].tunnel, "   Radius reply contains route for %s/%d\n",
-								fmtaddr(htonl(ip), 0), bits, 1));
+								fmtaddr(htonl(ip), 0), bits);
 							
 							session[s].route[routes].ip = ip;
 							session[s].route[routes].prefixlen = bits;

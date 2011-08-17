@@ -711,7 +711,7 @@ static void inittun(void)
 			char rtdata[32]; // 32 should be enough
 		} req;
 		uint32_t txqlen, mtu;
-		struct in_addr ip;
+		in_addr_t ip;
 
 		memset(&req, 0, sizeof(req));
 
@@ -736,17 +736,18 @@ static void inittun(void)
 		memset(&req, 0, sizeof(req));
 
 		req.nh.nlmsg_type = RTM_NEWADDR;
-		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_MULTI;
 		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
 
 		req.ifmsg.ifaddr.ifa_family = AF_INET;
 		req.ifmsg.ifaddr.ifa_prefixlen = 32;
+		req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
 		req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
 
 		if (config->bind_address)
-			ip.s_addr = config->bind_address;
+			ip = config->bind_address;
 		else
-			ip.s_addr = 0x01010101, // 1.1.1.1
+			ip = 0x01010101; // 1.1.1.1
 		netlink_addattr(&req.nh, IFA_LOCAL, &ip, sizeof(ip));
 
 		if (netlink_send(&req.nh) < 0)
@@ -759,7 +760,7 @@ static void inittun(void)
 			memset(&req, 0, sizeof(req));
 
 			req.nh.nlmsg_type = RTM_NEWADDR;
-			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_MULTI;
 			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
 
 			req.ifmsg.ifaddr.ifa_family = AF_INET6;
@@ -780,7 +781,7 @@ static void inittun(void)
 			memset(&req, 0, sizeof(req));
 
 			req.nh.nlmsg_type = RTM_NEWADDR;
-			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_MULTI;
+			req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE | NLM_F_MULTI;
 			req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifaddr));
 
 			req.ifmsg.ifaddr.ifa_family = AF_INET6;

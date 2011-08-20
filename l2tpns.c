@@ -446,7 +446,11 @@ static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, in
 		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
 	}
 	else
+	{
 		req.nh.nlmsg_type = RTM_DELROUTE;
+		req.nh.nlmsg_flags = NLM_F_REQUEST;
+	}
+
 	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.rt));
 
 	req.rt.rtm_family = AF_INET;
@@ -521,7 +525,11 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
 	}
 	else
+	{
 		req.nh.nlmsg_type = RTM_DELROUTE;
+		req.nh.nlmsg_flags = NLM_F_REQUEST;
+	}
+
 	req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.rt));
 
 	req.rt.rtm_family = AF_INET6;

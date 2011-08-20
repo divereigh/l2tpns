@@ -30,7 +30,7 @@ char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
-#include <linux/if.h>
+#include <net/if.h>
 #include <stddef.h>
 #include <time.h>
 #include <dlfcn.h>
@@ -648,7 +648,6 @@ static char *tun_nl_phase_msg[] = {
 // Set up TUN interface
 static void inittun(void)
 {
-	struct ifinfomsg ifinfo;
 	struct ifreq ifr;
 
 	memset(&ifr, 0, sizeof(ifr));
@@ -672,41 +671,13 @@ static void inittun(void)
 	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice) - 1);
 	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice));
 
+	tunidx = if_nametoindex(config->tundevice);
+	if (tunidx == 0)
 	{
-		// get the interface index
-		struct {
-			struct nlmsghdr nh;
-			struct ifinfomsg ifinfo;
-		} req;
-		char buf[4096];
-		ssize_t len;
-		struct nlmsghdr *resp_nh;
-
-		req.nh.nlmsg_type = RTM_GETLINK;
-		req.nh.nlmsg_flags = NLM_F_REQUEST;
-		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifinfo));
-
-		req.ifinfo.ifi_family = AF_UNSPEC; // as the man says
-
-		netlink_addattr(&req.nh, IFLA_IFNAME, config->tundevice, strlen(config->tundevice)+1);
-
-		if(netlink_send(&req.nh) < 0 || (len = netlink_recv(buf, sizeof(buf))) < 0)
-		{
-			LOG(0, 0, 0, "Error getting tun ifindex: %s\n", strerror(errno));
-			exit(1);
-		}
-
-		resp_nh = (struct nlmsghdr *)buf;
-		if (!NLMSG_OK (resp_nh, len))
-		{
-			LOG(0, 0, 0, "Malformed answer getting tun ifindex %ld\n", len);
-			exit(1);
-		}
-
-		memcpy(&ifinfo, NLMSG_DATA(resp_nh), sizeof(ifinfo));
-		// got index
-		tunidx = ifinfo.ifi_index;
+		LOG(0, 0, 0, "Can't get tun interface index\n");
+		exit(1);
 	}
+
 	{
 		struct {
 			// interface setting
@@ -722,11 +693,12 @@ static void inittun(void)
 
 		memset(&req, 0, sizeof(req));
 
-		req.nh.nlmsg_type = RTM_SETLINK;
+		req.nh.nlmsg_type = RTM_NEWLINK;
 		req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_MULTI;
 		req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.ifmsg.ifinfo));
 
-		req.ifmsg.ifinfo = ifinfo;
+		req.ifmsg.ifinfo.ifi_family = AF_UNSPEC;
+		req.ifmsg.ifinfo.ifi_index = tunidx;
 		req.ifmsg.ifinfo.ifi_flags |= IFF_UP; // set interface up
 		req.ifmsg.ifinfo.ifi_change = IFF_UP; // only change this flag
 
@@ -749,7 +721,7 @@ static void inittun(void)
 		req.ifmsg.ifaddr.ifa_family = AF_INET;
 		req.ifmsg.ifaddr.ifa_prefixlen = 32;
 		req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
-		req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+		req.ifmsg.ifaddr.ifa_index = tunidx;
 
 		if (config->bind_address)
 			ip = config->bind_address;
@@ -773,7 +745,7 @@ static void inittun(void)
 			req.ifmsg.ifaddr.ifa_family = AF_INET6;
 			req.ifmsg.ifaddr.ifa_prefixlen = 64;
 			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_LINK;
-			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+			req.ifmsg.ifaddr.ifa_index = tunidx;
 
 			// Link local address is FE80::1
 			memset(&ip6, 0, sizeof(ip6));
@@ -794,7 +766,7 @@ static void inittun(void)
 			req.ifmsg.ifaddr.ifa_family = AF_INET6;
 			req.ifmsg.ifaddr.ifa_prefixlen = 64;
 			req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
-			req.ifmsg.ifaddr.ifa_index = ifinfo.ifi_index;
+			req.ifmsg.ifaddr.ifa_index = tunidx;
 
 			// Global address is prefix::1
 			ip6 = config->ipv6_prefix;

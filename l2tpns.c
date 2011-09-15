@@ -2959,7 +2959,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 
 					// Set multilink options before sending initial LCP packet
 					sess_local[s].mp_mrru = 1614;
-					sess_local[s].mp_epdis = config->bind_address ? config->bind_address : my_address;
+					sess_local[s].mp_epdis = ntohl(config->bind_address ? config->bind_address : my_address);
 
 					sendlcp(s, t);
 					change_state(s, lcp, RequestSent);

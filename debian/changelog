@@ -1,3 +1,16 @@
+l2tpns (2.2.1-1fdn2) unstable; urgency=low
+
+  * Add netlink support. Replace most ioctl().
+  * Use netlink to set up tun device.
+  * Make routset()/route6set() use netlink.
+  * Switch from masks to CIDR globally for IPv4.
+  * Use the source IP we use as BGP router identifier.
+  * Check for expired timers even when receiving no events.
+  * Better error handling on CLI initialization.
+  * Correctly set mp_epdis in host order.
+
+ -- Benjamin Cama <benoar@dolka.fr>  Thu, 15 Sep 2011 23:57:05 +0200
+
 l2tpns (2.2.1-1fdn1) unstable; urgency=low
 
   * Version for FDN with features listed below

@@ -287,10 +287,18 @@ void init_cli(char *hostname)
 	addr.sin_port = htons(23);
 	if (bind(clifd, (void *) &addr, sizeof(addr)) < 0)
 	{
-		LOG(0, 0, 0, "Error listening on cli port 23: %s\n", strerror(errno));
+		LOG(0, 0, 0, "Error binding cli on port 23: %s\n", strerror(errno));
+		close(clifd);
+		clifd = -1;
 		return;
 	}
-	listen(clifd, 10);
+	if (listen(clifd, 10) < 0)
+	{
+		LOG(0, 0, 0, "Error listening on cli port 23: %s\n", strerror(errno));
+		close(clifd);
+		clifd = -1;
+		return;
+	}
 }
 
 void cli_do(int sockfd)

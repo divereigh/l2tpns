@@ -456,7 +456,7 @@ static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, in
 	req.rt.rtm_family = AF_INET;
 	req.rt.rtm_dst_len = prefixlen;
 	req.rt.rtm_table = RT_TABLE_MAIN;
-	req.rt.rtm_protocol = RTPROT_BOOT; // XXX
+	req.rt.rtm_protocol = 42;
 	req.rt.rtm_scope = RT_SCOPE_LINK;
 	req.rt.rtm_type = RTN_UNICAST;
 
@@ -535,7 +535,7 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 	req.rt.rtm_family = AF_INET6;
 	req.rt.rtm_dst_len = prefixlen;
 	req.rt.rtm_table = RT_TABLE_MAIN;
-	req.rt.rtm_protocol = RTPROT_BOOT; // XXX
+	req.rt.rtm_protocol = 42;
 	req.rt.rtm_scope = RT_SCOPE_LINK;
 	req.rt.rtm_type = RTN_UNICAST;
 

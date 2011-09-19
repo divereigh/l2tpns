@@ -4294,14 +4294,9 @@ static void initdata(int optdebug, char *optconfig)
 
 	if (!*hostname)
 	{
-		if (!*config->hostname)
-		{
-			// Grab my hostname unless it's been specified
-			gethostname(hostname, sizeof(hostname));
-			stripdomain(hostname);
-		}
-		else
-			strcpy(hostname, config->hostname);
+		// Grab my hostname unless it's been specified
+		gethostname(hostname, sizeof(hostname));
+		stripdomain(hostname);
 	}
 
 	_statistics->start_time = _statistics->last_reset = time(NULL);
@@ -4716,8 +4711,12 @@ int main(int argc, char *argv[])
 	initplugins();
 	initdata(optdebug, optconfig);
 
-	init_cli(hostname);
+	init_cli();
 	read_config_file();
+	/* set hostname /after/ having read the config file */
+	if (*config->hostname)
+		strcpy(hostname, config->hostname);
+	cli_init_hostname(hostname);
 	update_config();
 	init_tbf(config->num_tbfs);
 

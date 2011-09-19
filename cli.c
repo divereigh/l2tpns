@@ -133,7 +133,7 @@ static int cmd_show_access_list(struct cli_def *cli, char *command, char **argv,
 /* match if b is a substr of a */
 #define MATCH(a,b) (!strncmp((a), (b), strlen(b)))
 
-void init_cli(char *hostname)
+void init_cli()
 {
 	FILE *f;
 	char buf[4096];
@@ -143,10 +143,6 @@ void init_cli(char *hostname)
 	struct sockaddr_in addr;
 
 	cli = cli_init();
-	if (hostname && *hostname)
-		cli_set_hostname(cli, hostname);
-	else
-		cli_set_hostname(cli, "l2tpns");
 
 	c = cli_register_command(cli, NULL, "show", NULL, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, NULL);
 	cli_register_command(cli, c, "banana", cmd_show_banana, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show a banana");
@@ -299,6 +295,14 @@ void init_cli(char *hostname)
 		clifd = -1;
 		return;
 	}
+}
+
+void cli_init_hostname(char *hostname)
+{
+	if (hostname && *hostname)
+		cli_set_hostname(cli, hostname);
+	else
+		cli_set_hostname(cli, "l2tpns");
 }
 
 void cli_do(int sockfd)

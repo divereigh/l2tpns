@@ -29,7 +29,6 @@ char const *cvs_id_bgp = "$Id: bgp.c,v 1.12 2005/09/02 23:39:36 bodea Exp $";
 
 static void bgp_clear(struct bgp_peer *peer);
 static void bgp_set_retry(struct bgp_peer *peer);
-static void bgp_cidr(in_addr_t ip, int prefixlen, struct bgp_ip_prefix *pfx);
 static struct bgp_route_list *bgp_insert_route(struct bgp_route_list *head,
     struct bgp_route_list *new);
 

@@ -469,7 +469,7 @@ static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, in
 		netlink_addattr(&req.nh, RTA_GATEWAY, &n_ip, sizeof(n_ip));
 	}
 
-	LOG(1, s, 0, "Route %s %s/%d%s%s\n", add ? "add" : "del",
+	LOG(1, s, session[s].tunnel, "Route %s %s/%d%s%s\n", add ? "add" : "del",
 	    fmtaddr(htonl(ip), 0), prefixlen,
 	    gw ? " via" : "", gw ? fmtaddr(htonl(gw), 2) : "");
 
@@ -544,7 +544,7 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 	metric = 1;
 	netlink_addattr(&req.nh, RTA_METRICS, &metric, sizeof(metric));
 
-	LOG(1, s, 0, "Route %s %s/%d\n",
+	LOG(1, s, session[s].tunnel, "Route %s %s/%d\n",
 	    add ? "add" : "del",
 	    inet_ntop(AF_INET6, &ip, ipv6addr, INET6_ADDRSTRLEN),
 	    prefixlen);

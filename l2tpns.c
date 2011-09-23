@@ -1665,7 +1665,6 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 {
 	sessiont *sp;
 	tunnelidt t;
-	in_addr_t ip;
 
 	uint8_t b[MAXETHER + 20];
 
@@ -1678,8 +1677,6 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 	// Skip the tun header
 	buf += 4;
 	len -= 4;
-
-	ip = *(in_addr_t *)(buf + 16);
 
 	if (!session[s].ip)
 		return;

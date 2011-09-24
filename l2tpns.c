@@ -1462,75 +1462,76 @@ static void processipout(uint8_t *buf, int len)
 		return;
 	}
 
-	// Add on L2TP header
-        {
-                bundleidt bid = 0;
-                if(session[s].bundle != 0 && bundle[session[s].bundle].num_of_links > 1)
-                {
-                        bid = session[s].bundle;
-                        s = bundle[bid].members[bundle[bid].current_ses = ++bundle[bid].current_ses % bundle[bid].num_of_links];
-			t = session[s].tunnel;
-			sp = &session[s];
-                        LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
-                        if(len > MINFRAGLEN)
-                        {
-                                // Partition the packet to "bundle[b].num_of_links" fragments
-				bundlet *b = &bundle[bid];
-				uint32_t num_of_links = b->num_of_links;
-                                uint32_t fraglen = len / num_of_links;
-				fraglen = (fraglen > session[s].mru ? session[s].mru : fraglen);
-				uint32_t last_fraglen = fraglen + len % num_of_links;
-				last_fraglen = (last_fraglen > session[s].mru ? len % num_of_links : last_fraglen);
-				uint32_t remain = len;
+	if(session[s].bundle != 0 && bundle[session[s].bundle].num_of_links > 1)
+	{
+		// Add on L2TP header
+		bundleidt bid = session[s].bundle;
+		bundlet *b = &bundle[bid];
 
-				// send the first packet
-                                uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, fraglen, s, t, PPPIP, 0, bid, MP_BEGIN);
-                                if (!p) return;
-                                tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
-				// statistics
-				update_session_out_stat(s, sp, fraglen);
-				remain -= fraglen;
-				while (remain > last_fraglen)
-				{ 
-                                	s = b->members[b->current_ses = ++b->current_ses % num_of_links];
-					t = session[s].tunnel;
-					sp = &session[s];
-                                	LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
-                                	p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), fraglen, s, t, PPPIP, 0, bid, 0);
-                                	if (!p) return;
-                                	tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
-					update_session_out_stat(s, sp, fraglen);
-					remain -= fraglen;
-				}
-				// send the last fragment
-				s = b->members[b->current_ses = ++b->current_ses % num_of_links];
+		b->current_ses = (b->current_ses + 1) % b->num_of_links;
+		s = b->members[b->current_ses];
+		t = session[s].tunnel;
+		sp = &session[s];
+		LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
+		if(len > MINFRAGLEN)
+		{
+			// Partition the packet to "bundle[b].num_of_links" fragments
+			uint32_t num_of_links = b->num_of_links;
+			uint32_t fraglen = len / num_of_links;
+			fraglen = (fraglen > session[s].mru ? session[s].mru : fraglen);
+			uint32_t last_fraglen = fraglen + len % num_of_links;
+			last_fraglen = (last_fraglen > session[s].mru ? len % num_of_links : last_fraglen);
+			uint32_t remain = len;
+
+			// send the first packet
+			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, fraglen, s, t, PPPIP, 0, bid, MP_BEGIN);
+			if (!p) return;
+			tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
+			// statistics
+			update_session_out_stat(s, sp, fraglen);
+			remain -= fraglen;
+			while (remain > last_fraglen)
+			{ 
+				b->current_ses = (b->current_ses + 1) % num_of_links;
+				s = b->members[b->current_ses];
 				t = session[s].tunnel;
 				sp = &session[s];
-                               	LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
-                               	p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), remain, s, t, PPPIP, 0, bid, MP_END);
-                               	if (!p) return;
-                               	tunnelsend(fragbuf, remain + (p-fragbuf), t); // send it...
-				update_session_out_stat(s, sp, remain);
-				if (remain != last_fraglen)
-					LOG(3, s, t, "PROCESSIPOUT ERROR REMAIN != LAST_FRAGLEN, %d != %d\n", remain, last_fraglen);
-                        }
-                        else {
-                                // Send it as one frame
-                                uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, bid, MP_BOTH_BITS);
-                                if (!p) return;
-                                tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
-				LOG(4, s, t, "MPPP: packet sent as one frame\n");
-				update_session_out_stat(s, sp, len);
-                        }
-                }
-                else
-                {
-                        uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
-                        if (!p) return;
-                        tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+				LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
+				p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), fraglen, s, t, PPPIP, 0, bid, 0);
+				if (!p) return;
+				tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
+				update_session_out_stat(s, sp, fraglen);
+				remain -= fraglen;
+			}
+			// send the last fragment
+			b->current_ses = (b->current_ses + 1) % num_of_links;
+			s = b->members[b->current_ses];
+			t = session[s].tunnel;
+			sp = &session[s];
+			LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
+			p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), remain, s, t, PPPIP, 0, bid, MP_END);
+			if (!p) return;
+			tunnelsend(fragbuf, remain + (p-fragbuf), t); // send it...
+			update_session_out_stat(s, sp, remain);
+			if (remain != last_fraglen)
+				LOG(3, s, t, "PROCESSIPOUT ERROR REMAIN != LAST_FRAGLEN, %d != %d\n", remain, last_fraglen);
+		}
+		else {
+			// Send it as one frame
+			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, bid, MP_BOTH_BITS);
+			if (!p) return;
+			tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+			LOG(4, s, t, "MPPP: packet sent as one frame\n");
 			update_session_out_stat(s, sp, len);
-                }
-        }
+		}
+	}
+	else
+	{
+		uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
+		if (!p) return;
+		tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+		update_session_out_stat(s, sp, len);
+	}
 
 	// Snooping this session, send it to intercept box
 	if (sp->snoop_ip && sp->snoop_port)
@@ -1610,7 +1611,10 @@ static void processipv6out(uint8_t * buf, int len)
 	if (session[s].bundle && bundle[session[s].bundle].num_of_links > 1)
 	{
 		bundleidt bid = session[s].bundle;
-		s = bundle[bid].members[bundle[bid].current_ses = ++bundle[bid].current_ses % bundle[bid].num_of_links];
+		bundlet *b = &bundle[bid];
+
+		b->current_ses = (b->current_ses + 1) % b->num_of_links;
+		s = b->members[b->current_ses];
 		LOG(3, s, session[s].tunnel, "MPPP: Session number becomes: %u\n", s);
 	}
 	t = session[s].tunnel;

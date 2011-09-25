@@ -1976,11 +1976,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		{
 	                // This session was part of a bundle
 	                bundle[b].num_of_links--;
-	                LOG(3, s, 0, "MPPP: Dropping member link: %d from bundle %d\n",s,b);
+	                LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d\n",s,b);
 	                if(bundle[b].num_of_links == 0) 
 			{
 	                        bundleclear(b);
-	                        LOG(3, s, 0, "MPPP: Kill bundle: %d (No remaing member links)\n",b);
+	                        LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaing member links)\n",b);
                 	}
                 	else 
 			{
@@ -1997,7 +1997,7 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 	                                                break;
 	                                        }
 	                                bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
-	                                LOG(3, s, 0, "MPPP: Adjusted member links array\n");
+	                                LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
                         	}
                 	}
                 	cluster_send_bundle(b);

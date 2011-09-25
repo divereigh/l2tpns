@@ -1714,10 +1714,10 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 static void control16(controlt * c, uint16_t avp, uint16_t val, uint8_t m)
 {
 	uint16_t l = (m ? 0x8008 : 0x0008);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	*(uint16_t *) (c->buf + c->length + 6) = htons(val);
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	c->buf16[c->length/2 + 3] = htons(val);
 	c->length += 8;
 }
 
@@ -1725,10 +1725,10 @@ static void control16(controlt * c, uint16_t avp, uint16_t val, uint8_t m)
 static void control32(controlt * c, uint16_t avp, uint32_t val, uint8_t m)
 {
 	uint16_t l = (m ? 0x800A : 0x000A);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	*(uint32_t *) (c->buf + c->length + 6) = htonl(val);
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	*(uint32_t *) &c->buf[c->length + 6] = htonl(val);
 	c->length += 10;
 }
 
@@ -1736,10 +1736,10 @@ static void control32(controlt * c, uint16_t avp, uint32_t val, uint8_t m)
 static void controls(controlt * c, uint16_t avp, char *val, uint8_t m)
 {
 	uint16_t l = ((m ? 0x8000 : 0) + strlen(val) + 6);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	memcpy(c->buf + c->length + 6, val, strlen(val));
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	memcpy(&c->buf[c->length + 6], val, strlen(val));
 	c->length += 6 + strlen(val);
 }
 
@@ -1747,10 +1747,10 @@ static void controls(controlt * c, uint16_t avp, char *val, uint8_t m)
 static void controlb(controlt * c, uint16_t avp, uint8_t *val, unsigned int len, uint8_t m)
 {
 	uint16_t l = ((m ? 0x8000 : 0) + len + 6);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	memcpy(c->buf + c->length + 6, val, len);
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	memcpy(&c->buf[c->length + 6], val, len);
 	c->length += 6 + len;
 }
 
@@ -1767,7 +1767,7 @@ static controlt *controlnew(uint16_t mtype)
 	}
 	assert(c);
 	c->next = 0;
-	*(uint16_t *) (c->buf + 0) = htons(0xC802); // flags/ver
+	c->buf16[0] = htons(0xC802); // flags/ver
 	c->length = 12;
 	control16(c, 0, mtype, 1);
 	return c;
@@ -1777,26 +1777,26 @@ static controlt *controlnew(uint16_t mtype)
 // (ZLB send).
 static void controlnull(tunnelidt t)
 {
-	uint8_t buf[12];
+	uint16_t buf[6];
 	if (tunnel[t].controlc)	// Messages queued; They will carry the ack.
 		return;
 
-	*(uint16_t *) (buf + 0) = htons(0xC802); // flags/ver
-	*(uint16_t *) (buf + 2) = htons(12); // length
-	*(uint16_t *) (buf + 4) = htons(tunnel[t].far); // tunnel
-	*(uint16_t *) (buf + 6) = htons(0); // session
-	*(uint16_t *) (buf + 8) = htons(tunnel[t].ns); // sequence
-	*(uint16_t *) (buf + 10) = htons(tunnel[t].nr); // sequence
-	tunnelsend(buf, 12, t);
+	buf[0] = htons(0xC802); // flags/ver
+	buf[1] = htons(12); // length
+	buf[2] = htons(tunnel[t].far); // tunnel
+	buf[3] = htons(0); // session
+	buf[4] = htons(tunnel[t].ns); // sequence
+	buf[5] = htons(tunnel[t].nr); // sequence
+	tunnelsend((uint8_t *)buf, 12, t);
 }
 
 // add a control message to a tunnel, and send if within window
 static void controladd(controlt *c, sessionidt far, tunnelidt t)
 {
-	*(uint16_t *) (c->buf + 2) = htons(c->length); // length
-	*(uint16_t *) (c->buf + 4) = htons(tunnel[t].far); // tunnel
-	*(uint16_t *) (c->buf + 6) = htons(far); // session
-	*(uint16_t *) (c->buf + 8) = htons(tunnel[t].ns); // sequence
+	c->buf16[1] = htons(c->length); // length
+	c->buf16[2] = htons(tunnel[t].far); // tunnel
+	c->buf16[3] = htons(far); // session
+	c->buf16[4] = htons(tunnel[t].ns); // sequence
 	tunnel[t].ns++;              // advance sequence
 	// link in message in to queue
 	if (tunnel[t].controlc)
@@ -2012,10 +2012,10 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		controlt *c = controlnew(14); // sending CDN
 		if (cdn_error)
 		{
-			uint8_t buf[4];
-			*(uint16_t *) buf     = htons(cdn_result);
-			*(uint16_t *) (buf+2) = htons(cdn_error);
-			controlb(c, 1, buf, 4, 1);
+			uint16_t buf[2];
+			buf[0] = htons(cdn_result);
+			buf[1] = htons(cdn_error);
+			controlb(c, 1, (uint8_t *)buf, 4, 1);
 		}
 		else
 			control16(c, 1, cdn_result, 1);
@@ -2204,21 +2204,21 @@ static void tunnelshutdown(tunnelidt t, char *reason, int result, int error, cha
 		controlt *c = controlnew(4);	// sending StopCCN
 		if (error)
 		{
-			uint8_t buf[64];
+			uint16_t buf[32];
 			int l = 4;
-			*(uint16_t *) buf     = htons(result);
-			*(uint16_t *) (buf+2) = htons(error);
+			buf[0] = htons(result);
+			buf[1] = htons(error);
 			if (msg)
 			{
 				int m = strlen(msg);
 				if (m + 4 > sizeof(buf))
 				    m = sizeof(buf) - 4;
 
-				memcpy(buf+4, msg, m);
+				memcpy(buf+2, msg, m);
 				l += m;
 			}
 
-			controlb(c, 1, buf, l, 1);
+			controlb(c, 1, (uint8_t *)buf, l, 1);
 		}
 		else
 			control16(c, 1, result, 1);

@@ -1,3 +1,12 @@
+l2tpns (2.2.1-1fdn3) unstable; urgency=low
+
+  * Change the rtm_proto to some arbitrary-defined value.
+  * Set hostname /after/ having read the config file.
+  * Fix logging of the tunnel number in different places.
+  * Several cleanups.
+
+ -- Benjamin Cama <benoar@dolka.fr>  Tue, 03 Jan 2012 20:28:20 +0100
+
 l2tpns (2.2.1-1fdn2) unstable; urgency=low
 
   * Add netlink support. Replace most ioctl().

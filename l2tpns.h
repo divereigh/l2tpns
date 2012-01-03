@@ -242,7 +242,10 @@ typedef struct controls		// control message
 {
 	struct controls *next;	// next in queue
 	uint16_t length;	// length
-	uint8_t buf[MAXCONTROL];
+	union {
+		uint8_t buf[MAXCONTROL];
+		uint16_t buf16[MAXCONTROL/2];
+	} __attribute__ ((__transparent_union__));
 }
 controlt;
 
@@ -907,7 +910,8 @@ void become_master(void);	// We're the master; kick off any required master init
 
 
 // cli.c
-void init_cli(char *hostname);
+void init_cli();
+void cli_init_hostname(char *hostname);
 void cli_do_file(FILE *fh);
 void cli_do(int sockfd);
 int cli_arg_help(struct cli_def *cli, int cr_ok, char *entry, ...);

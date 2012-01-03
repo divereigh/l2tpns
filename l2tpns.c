@@ -469,7 +469,7 @@ static void routeset(sessionidt s, in_addr_t ip, int prefixlen, in_addr_t gw, in
 		netlink_addattr(&req.nh, RTA_GATEWAY, &n_ip, sizeof(n_ip));
 	}
 
-	LOG(1, s, 0, "Route %s %s/%d%s%s\n", add ? "add" : "del",
+	LOG(1, s, session[s].tunnel, "Route %s %s/%d%s%s\n", add ? "add" : "del",
 	    fmtaddr(htonl(ip), 0), prefixlen,
 	    gw ? " via" : "", gw ? fmtaddr(htonl(gw), 2) : "");
 
@@ -544,7 +544,7 @@ void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add)
 	metric = 1;
 	netlink_addattr(&req.nh, RTA_METRICS, &metric, sizeof(metric));
 
-	LOG(1, 0, 0, "Route %s %s/%d\n",
+	LOG(1, s, session[s].tunnel, "Route %s %s/%d\n",
 	    add ? "add" : "del",
 	    inet_ntop(AF_INET6, &ip, ipv6addr, INET6_ADDRSTRLEN),
 	    prefixlen);
@@ -1462,75 +1462,76 @@ static void processipout(uint8_t *buf, int len)
 		return;
 	}
 
-	// Add on L2TP header
-        {
-                bundleidt bid = 0;
-                if(session[s].bundle != 0 && bundle[session[s].bundle].num_of_links > 1)
-                {
-                        bid = session[s].bundle;
-                        s = bundle[bid].members[bundle[bid].current_ses = ++bundle[bid].current_ses % bundle[bid].num_of_links];
-			t = session[s].tunnel;
-			sp = &session[s];
-                        LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
-                        if(len > MINFRAGLEN)
-                        {
-                                // Partition the packet to "bundle[b].num_of_links" fragments
-				bundlet *b = &bundle[bid];
-				uint32_t num_of_links = b->num_of_links;
-                                uint32_t fraglen = len / num_of_links;
-				fraglen = (fraglen > session[s].mru ? session[s].mru : fraglen);
-				uint32_t last_fraglen = fraglen + len % num_of_links;
-				last_fraglen = (last_fraglen > session[s].mru ? len % num_of_links : last_fraglen);
-				uint32_t remain = len;
+	if(session[s].bundle != 0 && bundle[session[s].bundle].num_of_links > 1)
+	{
+		// Add on L2TP header
+		bundleidt bid = session[s].bundle;
+		bundlet *b = &bundle[bid];
 
-				// send the first packet
-                                uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, fraglen, s, t, PPPIP, 0, bid, MP_BEGIN);
-                                if (!p) return;
-                                tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
-				// statistics
-				update_session_out_stat(s, sp, fraglen);
-				remain -= fraglen;
-				while (remain > last_fraglen)
-				{ 
-                                	s = b->members[b->current_ses = ++b->current_ses % num_of_links];
-					t = session[s].tunnel;
-					sp = &session[s];
-                                	LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
-                                	p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), fraglen, s, t, PPPIP, 0, bid, 0);
-                                	if (!p) return;
-                                	tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
-					update_session_out_stat(s, sp, fraglen);
-					remain -= fraglen;
-				}
-				// send the last fragment
-				s = b->members[b->current_ses = ++b->current_ses % num_of_links];
+		b->current_ses = (b->current_ses + 1) % b->num_of_links;
+		s = b->members[b->current_ses];
+		t = session[s].tunnel;
+		sp = &session[s];
+		LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
+		if(len > MINFRAGLEN)
+		{
+			// Partition the packet to "bundle[b].num_of_links" fragments
+			uint32_t num_of_links = b->num_of_links;
+			uint32_t fraglen = len / num_of_links;
+			fraglen = (fraglen > session[s].mru ? session[s].mru : fraglen);
+			uint32_t last_fraglen = fraglen + len % num_of_links;
+			last_fraglen = (last_fraglen > session[s].mru ? len % num_of_links : last_fraglen);
+			uint32_t remain = len;
+
+			// send the first packet
+			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, fraglen, s, t, PPPIP, 0, bid, MP_BEGIN);
+			if (!p) return;
+			tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
+			// statistics
+			update_session_out_stat(s, sp, fraglen);
+			remain -= fraglen;
+			while (remain > last_fraglen)
+			{ 
+				b->current_ses = (b->current_ses + 1) % num_of_links;
+				s = b->members[b->current_ses];
 				t = session[s].tunnel;
 				sp = &session[s];
-                               	LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
-                               	p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), remain, s, t, PPPIP, 0, bid, MP_END);
-                               	if (!p) return;
-                               	tunnelsend(fragbuf, remain + (p-fragbuf), t); // send it...
-				update_session_out_stat(s, sp, remain);
-				if (remain != last_fraglen)
-					LOG(3, s, t, "PROCESSIPOUT ERROR REMAIN != LAST_FRAGLEN, %d != %d\n", remain, last_fraglen);
-                        }
-                        else {
-                                // Send it as one frame
-                                uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, bid, MP_BOTH_BITS);
-                                if (!p) return;
-                                tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
-				LOG(4, s, t, "MPPP: packet sent as one frame\n");
-				update_session_out_stat(s, sp, len);
-                        }
-                }
-                else
-                {
-                        uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
-                        if (!p) return;
-                        tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+				LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
+				p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), fraglen, s, t, PPPIP, 0, bid, 0);
+				if (!p) return;
+				tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
+				update_session_out_stat(s, sp, fraglen);
+				remain -= fraglen;
+			}
+			// send the last fragment
+			b->current_ses = (b->current_ses + 1) % num_of_links;
+			s = b->members[b->current_ses];
+			t = session[s].tunnel;
+			sp = &session[s];
+			LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
+			p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), remain, s, t, PPPIP, 0, bid, MP_END);
+			if (!p) return;
+			tunnelsend(fragbuf, remain + (p-fragbuf), t); // send it...
+			update_session_out_stat(s, sp, remain);
+			if (remain != last_fraglen)
+				LOG(3, s, t, "PROCESSIPOUT ERROR REMAIN != LAST_FRAGLEN, %d != %d\n", remain, last_fraglen);
+		}
+		else {
+			// Send it as one frame
+			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, bid, MP_BOTH_BITS);
+			if (!p) return;
+			tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+			LOG(4, s, t, "MPPP: packet sent as one frame\n");
 			update_session_out_stat(s, sp, len);
-                }
-        }
+		}
+	}
+	else
+	{
+		uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
+		if (!p) return;
+		tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+		update_session_out_stat(s, sp, len);
+	}
 
 	// Snooping this session, send it to intercept box
 	if (sp->snoop_ip && sp->snoop_port)
@@ -1610,7 +1611,10 @@ static void processipv6out(uint8_t * buf, int len)
 	if (session[s].bundle && bundle[session[s].bundle].num_of_links > 1)
 	{
 		bundleidt bid = session[s].bundle;
-		s = bundle[bid].members[bundle[bid].current_ses = ++bundle[bid].current_ses % bundle[bid].num_of_links];
+		bundlet *b = &bundle[bid];
+
+		b->current_ses = (b->current_ses + 1) % b->num_of_links;
+		s = b->members[b->current_ses];
 		LOG(3, s, session[s].tunnel, "MPPP: Session number becomes: %u\n", s);
 	}
 	t = session[s].tunnel;
@@ -1665,7 +1669,6 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 {
 	sessiont *sp;
 	tunnelidt t;
-	in_addr_t ip;
 
 	uint8_t b[MAXETHER + 20];
 
@@ -1678,8 +1681,6 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 	// Skip the tun header
 	buf += 4;
 	len -= 4;
-
-	ip = *(in_addr_t *)(buf + 16);
 
 	if (!session[s].ip)
 		return;
@@ -1713,10 +1714,10 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 static void control16(controlt * c, uint16_t avp, uint16_t val, uint8_t m)
 {
 	uint16_t l = (m ? 0x8008 : 0x0008);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	*(uint16_t *) (c->buf + c->length + 6) = htons(val);
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	c->buf16[c->length/2 + 3] = htons(val);
 	c->length += 8;
 }
 
@@ -1724,10 +1725,10 @@ static void control16(controlt * c, uint16_t avp, uint16_t val, uint8_t m)
 static void control32(controlt * c, uint16_t avp, uint32_t val, uint8_t m)
 {
 	uint16_t l = (m ? 0x800A : 0x000A);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	*(uint32_t *) (c->buf + c->length + 6) = htonl(val);
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	*(uint32_t *) &c->buf[c->length + 6] = htonl(val);
 	c->length += 10;
 }
 
@@ -1735,10 +1736,10 @@ static void control32(controlt * c, uint16_t avp, uint32_t val, uint8_t m)
 static void controls(controlt * c, uint16_t avp, char *val, uint8_t m)
 {
 	uint16_t l = ((m ? 0x8000 : 0) + strlen(val) + 6);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	memcpy(c->buf + c->length + 6, val, strlen(val));
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	memcpy(&c->buf[c->length + 6], val, strlen(val));
 	c->length += 6 + strlen(val);
 }
 
@@ -1746,10 +1747,10 @@ static void controls(controlt * c, uint16_t avp, char *val, uint8_t m)
 static void controlb(controlt * c, uint16_t avp, uint8_t *val, unsigned int len, uint8_t m)
 {
 	uint16_t l = ((m ? 0x8000 : 0) + len + 6);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	memcpy(c->buf + c->length + 6, val, len);
+	c->buf16[c->length/2 + 0] = htons(l);
+	c->buf16[c->length/2 + 1] = htons(0);
+	c->buf16[c->length/2 + 2] = htons(avp);
+	memcpy(&c->buf[c->length + 6], val, len);
 	c->length += 6 + len;
 }
 
@@ -1766,7 +1767,7 @@ static controlt *controlnew(uint16_t mtype)
 	}
 	assert(c);
 	c->next = 0;
-	*(uint16_t *) (c->buf + 0) = htons(0xC802); // flags/ver
+	c->buf16[0] = htons(0xC802); // flags/ver
 	c->length = 12;
 	control16(c, 0, mtype, 1);
 	return c;
@@ -1776,26 +1777,26 @@ static controlt *controlnew(uint16_t mtype)
 // (ZLB send).
 static void controlnull(tunnelidt t)
 {
-	uint8_t buf[12];
+	uint16_t buf[6];
 	if (tunnel[t].controlc)	// Messages queued; They will carry the ack.
 		return;
 
-	*(uint16_t *) (buf + 0) = htons(0xC802); // flags/ver
-	*(uint16_t *) (buf + 2) = htons(12); // length
-	*(uint16_t *) (buf + 4) = htons(tunnel[t].far); // tunnel
-	*(uint16_t *) (buf + 6) = htons(0); // session
-	*(uint16_t *) (buf + 8) = htons(tunnel[t].ns); // sequence
-	*(uint16_t *) (buf + 10) = htons(tunnel[t].nr); // sequence
-	tunnelsend(buf, 12, t);
+	buf[0] = htons(0xC802); // flags/ver
+	buf[1] = htons(12); // length
+	buf[2] = htons(tunnel[t].far); // tunnel
+	buf[3] = htons(0); // session
+	buf[4] = htons(tunnel[t].ns); // sequence
+	buf[5] = htons(tunnel[t].nr); // sequence
+	tunnelsend((uint8_t *)buf, 12, t);
 }
 
 // add a control message to a tunnel, and send if within window
 static void controladd(controlt *c, sessionidt far, tunnelidt t)
 {
-	*(uint16_t *) (c->buf + 2) = htons(c->length); // length
-	*(uint16_t *) (c->buf + 4) = htons(tunnel[t].far); // tunnel
-	*(uint16_t *) (c->buf + 6) = htons(far); // session
-	*(uint16_t *) (c->buf + 8) = htons(tunnel[t].ns); // sequence
+	c->buf16[1] = htons(c->length); // length
+	c->buf16[2] = htons(tunnel[t].far); // tunnel
+	c->buf16[3] = htons(far); // session
+	c->buf16[4] = htons(tunnel[t].ns); // sequence
 	tunnel[t].ns++;              // advance sequence
 	// link in message in to queue
 	if (tunnel[t].controlc)
@@ -1975,11 +1976,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		{
 	                // This session was part of a bundle
 	                bundle[b].num_of_links--;
-	                LOG(3, s, 0, "MPPP: Dropping member link: %d from bundle %d\n",s,b);
+	                LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d\n",s,b);
 	                if(bundle[b].num_of_links == 0) 
 			{
 	                        bundleclear(b);
-	                        LOG(3, s, 0, "MPPP: Kill bundle: %d (No remaing member links)\n",b);
+	                        LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaing member links)\n",b);
                 	}
                 	else 
 			{
@@ -1996,7 +1997,7 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 	                                                break;
 	                                        }
 	                                bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
-	                                LOG(3, s, 0, "MPPP: Adjusted member links array\n");
+	                                LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
                         	}
                 	}
                 	cluster_send_bundle(b);
@@ -2011,10 +2012,10 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		controlt *c = controlnew(14); // sending CDN
 		if (cdn_error)
 		{
-			uint8_t buf[4];
-			*(uint16_t *) buf     = htons(cdn_result);
-			*(uint16_t *) (buf+2) = htons(cdn_error);
-			controlb(c, 1, buf, 4, 1);
+			uint16_t buf[2];
+			buf[0] = htons(cdn_result);
+			buf[1] = htons(cdn_error);
+			controlb(c, 1, (uint8_t *)buf, 4, 1);
 		}
 		else
 			control16(c, 1, cdn_result, 1);
@@ -2203,21 +2204,21 @@ static void tunnelshutdown(tunnelidt t, char *reason, int result, int error, cha
 		controlt *c = controlnew(4);	// sending StopCCN
 		if (error)
 		{
-			uint8_t buf[64];
+			uint16_t buf[32];
 			int l = 4;
-			*(uint16_t *) buf     = htons(result);
-			*(uint16_t *) (buf+2) = htons(error);
+			buf[0] = htons(result);
+			buf[1] = htons(error);
 			if (msg)
 			{
 				int m = strlen(msg);
 				if (m + 4 > sizeof(buf))
 				    m = sizeof(buf) - 4;
 
-				memcpy(buf+4, msg, m);
+				memcpy(buf+2, msg, m);
 				l += m;
 			}
 
-			controlb(c, 1, buf, l, 1);
+			controlb(c, 1, (uint8_t *)buf, l, 1);
 		}
 		else
 			control16(c, 1, result, 1);
@@ -4294,14 +4295,9 @@ static void initdata(int optdebug, char *optconfig)
 
 	if (!*hostname)
 	{
-		if (!*config->hostname)
-		{
-			// Grab my hostname unless it's been specified
-			gethostname(hostname, sizeof(hostname));
-			stripdomain(hostname);
-		}
-		else
-			strcpy(hostname, config->hostname);
+		// Grab my hostname unless it's been specified
+		gethostname(hostname, sizeof(hostname));
+		stripdomain(hostname);
 	}
 
 	_statistics->start_time = _statistics->last_reset = time(NULL);
@@ -4716,8 +4712,12 @@ int main(int argc, char *argv[])
 	initplugins();
 	initdata(optdebug, optconfig);
 
-	init_cli(hostname);
+	init_cli();
 	read_config_file();
+	/* set hostname /after/ having read the config file */
+	if (*config->hostname)
+		strcpy(hostname, config->hostname);
+	cli_init_hostname(hostname);
 	update_config();
 	init_tbf(config->num_tbfs);
 

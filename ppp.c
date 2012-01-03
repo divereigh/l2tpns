@@ -1540,7 +1540,7 @@ void processipv6cp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		uint8_t *o = p + 4;
 		int length = l - 4;
 		int gotip = 0;
-		uint8_t ident[8];
+		uint32_t ident[2];
 
 		while (length > 2)
 		{
@@ -1552,12 +1552,12 @@ void processipv6cp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 				gotip++; // seen address
 				if (o[1] != 10) return;
 
-				*(uint32_t *) ident = htonl(session[s].ip);
-				*(uint32_t *) (ident + 4) = 0;
+				ident[0] = htonl(session[s].ip);
+				ident[1] = 0;
 
 				if (memcmp(o + 2, ident, sizeof(ident)))
 				{
-					q = ppp_conf_nak(s, b, sizeof(b), PPPIPV6CP, &response, q, p, o, ident, sizeof(ident));
+					q = ppp_conf_nak(s, b, sizeof(b), PPPIPV6CP, &response, q, p, o, (uint8_t *)ident, sizeof(ident));
 					if (!q) return;
 				}
 
@@ -2375,7 +2375,7 @@ uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelid
 
 	if ((b - start) + l > size)
 	{
-		LOG(2, s, t, "makeppp would overflow buffer (size=%d, header+payload=%d)\n", size, (b - start) + l);
+		LOG(2, s, t, "makeppp would overflow buffer (size=%d, header+payload=%td)\n", size, (b - start) + l);
 		return NULL;
 	}
 

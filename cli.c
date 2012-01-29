@@ -139,8 +139,6 @@ void init_cli()
 	char buf[4096];
 	struct cli_command *c;
 	struct cli_command *c2;
-	int on = 1;
-	struct sockaddr_in addr;
 
 	cli = cli_init();
 
@@ -268,6 +266,17 @@ void init_cli()
 		}
 		fclose(f);
 	}
+}
+
+void cli_init_complete(char *hostname)
+{
+	int on = 1;
+	struct sockaddr_in addr;
+
+	if (hostname && *hostname)
+		cli_set_hostname(cli, hostname);
+	else
+		cli_set_hostname(cli, "l2tpns");
 
 	memset(&addr, 0, sizeof(addr));
 	clifd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -295,14 +304,6 @@ void init_cli()
 		clifd = -1;
 		return;
 	}
-}
-
-void cli_init_hostname(char *hostname)
-{
-	if (hostname && *hostname)
-		cli_set_hostname(cli, hostname);
-	else
-		cli_set_hostname(cli, "l2tpns");
 }
 
 void cli_do(int sockfd)

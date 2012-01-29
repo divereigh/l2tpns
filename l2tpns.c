@@ -4717,7 +4717,7 @@ int main(int argc, char *argv[])
 	/* set hostname /after/ having read the config file */
 	if (*config->hostname)
 		strcpy(hostname, config->hostname);
-	cli_init_hostname(hostname);
+	cli_init_complete(hostname);
 	update_config();
 	init_tbf(config->num_tbfs);
 

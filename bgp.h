@@ -1,5 +1,5 @@
 /* BGPv4 (RFC1771) */
-/* $Id: bgp.h,v 1.5 2005/06/04 15:42:35 bodea Exp $ */
+/* $Id: bgp.h,v 1.5 2005-06-04 15:42:35 bodea Exp $ */
 
 #ifndef __BGP_H__
 #define __BGP_H__
@@ -199,7 +199,5 @@ void bgp_enable_routing(int enable);
 int bgp_set_poll(void);
 int bgp_process(uint32_t events[]);
 char const *bgp_state_str(enum bgp_state state);
-
-extern char const *cvs_id_bgp;
 
 #endif /* __BGP_H__ */

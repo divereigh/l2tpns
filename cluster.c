@@ -1351,10 +1351,10 @@ struct oldsession {
 	uint32_t tx_connect_speed;
 	uint32_t rx_connect_speed;
 	clockt timeout;
-        uint32_t mrru;
-        uint8_t mssf;
-        epdist epdis;
-        bundleidt bundle;
+	uint32_t mrru;
+	uint8_t mssf;
+	epdist epdis;
+	bundleidt bundle;
 	in_addr_t snoop_ip;
 	uint16_t snoop_port;
 	uint8_t walled_garden;

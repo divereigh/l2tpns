@@ -1,7 +1,5 @@
 // L2TPNS Radius Stuff
 
-char const *cvs_id_radius = "$Id: radius.c,v 1.56 2009/12/08 14:49:28 bodea Exp $";
-
 #include <time.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -363,6 +361,13 @@ void radiussend(uint16_t r, uint8_t state)
 						p += p[1];
 					}
 				}
+			}
+
+			if (session[s].classlen) {
+				*p = 25;	// class
+				p[1] = session[s].classlen + 2;
+				memcpy(p + 2, session[s].class, session[s].classlen);
+				p += p[1];
 			}
 
 			{
@@ -808,6 +813,15 @@ void processrad(uint8_t *buf, int len, char socket_index)
 							session[s].ipv6route = r6;
 							session[s].ipv6prefixlen = prefixlen;
 						}
+					}
+					else if (*p == 25)
+					{
+						// Class
+						if (p[1] < 3) continue;
+						session[s].classlen = p[1] - 2;
+						if (session[s].classlen > MAXCLASS)
+							session[s].classlen = MAXCLASS;
+						memcpy(session[s].class, p + 2, session[s].classlen);
 					}
 				}
 			}

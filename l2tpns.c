@@ -4,8 +4,6 @@
 // Copyright (c) 2002 FireBrick (Andrews & Arnold Ltd / Watchfront Ltd) - GPL licenced
 // vim: sw=8 ts=8
 
-char const *cvs_id_l2tpns = "$Id: l2tpns.c,v 1.176 2011/01/20 12:48:40 bodea Exp $";
-
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -4717,7 +4715,7 @@ int main(int argc, char *argv[])
 	/* set hostname /after/ having read the config file */
 	if (*config->hostname)
 		strcpy(hostname, config->hostname);
-	cli_init_hostname(hostname);
+	cli_init_complete(hostname);
 	update_config();
 	init_tbf(config->num_tbfs);
 

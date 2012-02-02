@@ -1,3 +1,10 @@
+l2tpns (2.2.1-2fdn1) unstable; urgency=low
+
+  * Fix binding the CLI to a specific address
+  * Merge latest upstream version (hence the version bump)
+
+ -- Benjamin Cama <benoar@dolka.fr>  Thu, 02 Feb 2012 02:30:06 +0100
+
 l2tpns (2.2.1-1fdn3) unstable; urgency=low
 
   * Change the rtm_proto to some arbitrary-defined value.

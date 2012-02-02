@@ -1,7 +1,5 @@
 // L2TPNS PPP Stuff
 
-char const *cvs_id_ppp = "$Id: ppp.c,v 1.104 2009/12/08 14:49:28 bodea Exp $";
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -2375,7 +2373,7 @@ uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelid
 
 	if ((b - start) + l > size)
 	{
-		LOG(2, s, t, "makeppp would overflow buffer (size=%d, header+payload=%td)\n", size, (b - start) + l);
+		LOG(2, s, t, "makeppp would overflow buffer (size=%d, header+payload=%ld)\n", size, (b - start) + l);
 		return NULL;
 	}
 

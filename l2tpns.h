@@ -57,10 +57,10 @@
 #define MP_BOTH_BITS    0xC0            // This value is used when both bits (begin and end) are set in MP header
 
 #define MINFRAGLEN	64		// Minumum fragment length
-#define MAXFRAGLEN	750		// Maximum length for Multilink fragment (MTU / 2 sessions)
-#define MAXFRAGNUM	128		// Maximum number of Multilink fragment in a bundle (must be in the form of 2^X)
+#define MAXFRAGLEN	1496	// Maximum length for Multilink fragment (The multilink may contain only one link)
+#define MAXFRAGNUM	512		// Maximum number of Multilink fragment in a bundle (must be in the form of 2^X)
 					// it's not expected to have a space for more than 10 unassembled packets = 10 * MAXBUNDLESES
-#define	MAXFRAGNUM_MASK	127		// Must be equal to MAXFRAGNUM-1
+#define	MAXFRAGNUM_MASK	511		// Must be equal to MAXFRAGNUM-1
 
 // Constants
 #ifndef ETCDIR
@@ -258,6 +258,7 @@ typedef struct {
 
 typedef struct {
 	sessionidt sid;			// Fragment originating session
+	tunnelidt tid;			// Fragment originating tunnel
 	uint8_t	flags;			// MP frame flags
 	uint32_t seq;			// fragment seq num
         uint16_t length;                // Fragment length

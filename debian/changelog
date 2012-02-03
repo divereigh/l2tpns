@@ -1,3 +1,10 @@
+l2tpns (2.2.1-2fdn1.1) unstable; urgency=low
+
+  * Fix MLPPP functionality
+  * Fix warning compilation on ppp.c
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Fri, 03 Feb 2012 16:16:56 +0100
+
 l2tpns (2.2.1-2fdn1) unstable; urgency=low
 
   * Fix binding the CLI to a specific address

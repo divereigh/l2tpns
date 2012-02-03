@@ -1463,35 +1463,63 @@ static void processipout(uint8_t *buf, int len)
 	if(session[s].bundle != 0 && bundle[session[s].bundle].num_of_links > 1)
 	{
 		// Add on L2TP header
+		sessionidt members[MAXBUNDLESES];
 		bundleidt bid = session[s].bundle;
 		bundlet *b = &bundle[bid];
+		uint32_t num_of_links, nb_opened;
+		int i;
 
-		b->current_ses = (b->current_ses + 1) % b->num_of_links;
-		s = b->members[b->current_ses];
+		num_of_links = b->num_of_links;
+		nb_opened = 0;
+		for (i = 0;i < num_of_links;i++)
+		{
+			s = b->members[i];
+			if (session[s].ppp.lcp == Opened)
+			{
+				members[nb_opened] = s;
+				nb_opened++;
+			}
+		}
+
+		if (nb_opened < 1)
+		{
+			LOG(2, s, t, "MPPP: PROCESSIPOUT ERROR, no session opened in bundle:%d\n", bid);
+			return;
+		}
+
+		num_of_links = nb_opened;
+		b->current_ses = (b->current_ses + 1) % num_of_links;
+		s = members[b->current_ses];
 		t = session[s].tunnel;
 		sp = &session[s];
-		LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
-		if(len > MINFRAGLEN)
+
+		if ((num_of_links > 1) && (len > MINFRAGLEN))
 		{
-			// Partition the packet to "bundle[b].num_of_links" fragments
-			uint32_t num_of_links = b->num_of_links;
-			uint32_t fraglen = len / num_of_links;
-			fraglen = (fraglen > session[s].mru ? session[s].mru : fraglen);
-			uint32_t last_fraglen = fraglen + len % num_of_links;
-			last_fraglen = (last_fraglen > session[s].mru ? len % num_of_links : last_fraglen);
+			LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
+
+			//for rotate traffic among the member links
+			uint32_t divisor = num_of_links;
+			if (divisor > 2)
+				divisor--;
+
+			// Partition the packet to "num_of_links" fragments
+			uint32_t fraglen = len / divisor;
+			uint32_t last_fraglen = fraglen + len % divisor;
 			uint32_t remain = len;
 
 			// send the first packet
 			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, fraglen, s, t, PPPIP, 0, bid, MP_BEGIN);
 			if (!p) return;
 			tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
+
 			// statistics
 			update_session_out_stat(s, sp, fraglen);
+
 			remain -= fraglen;
 			while (remain > last_fraglen)
 			{ 
 				b->current_ses = (b->current_ses + 1) % num_of_links;
-				s = b->members[b->current_ses];
+				s = members[b->current_ses];
 				t = session[s].tunnel;
 				sp = &session[s];
 				LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
@@ -1503,7 +1531,7 @@ static void processipout(uint8_t *buf, int len)
 			}
 			// send the last fragment
 			b->current_ses = (b->current_ses + 1) % num_of_links;
-			s = b->members[b->current_ses];
+			s = members[b->current_ses];
 			t = session[s].tunnel;
 			sp = &session[s];
 			LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
@@ -1516,10 +1544,9 @@ static void processipout(uint8_t *buf, int len)
 		}
 		else {
 			// Send it as one frame
-			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, bid, MP_BOTH_BITS);
+			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
 			if (!p) return;
 			tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
-			LOG(4, s, t, "MPPP: packet sent as one frame\n");
 			update_session_out_stat(s, sp, len);
 		}
 	}
@@ -1970,36 +1997,67 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		if (session[s].ppp.ipv6cp == Opened && session[s].ipv6prefixlen && del_routes)
 			route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 0);
 		
-		if (b) 
+		if (b)
 		{
-	                // This session was part of a bundle
-	                bundle[b].num_of_links--;
-	                LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d\n",s,b);
-	                if(bundle[b].num_of_links == 0) 
+			// This session was part of a bundle
+			bundle[b].num_of_links--;
+			LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d\n",s,b);
+			if(bundle[b].num_of_links == 0)
 			{
-	                        bundleclear(b);
-	                        LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaing member links)\n",b);
-                	}
-                	else 
+				bundleclear(b);
+				LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaing member links)\n",b);
+			}
+			else 
 			{
-	                        // Adjust the members array to accomodate the new change
-	                        uint8_t mem_num = 0;
-	                        // It should be here num_of_links instead of num_of_links-1 (previous instruction "num_of_links--")
-	                        if(bundle[b].members[bundle[b].num_of_links] != s) 
+				// Adjust the members array to accomodate the new change
+				uint8_t mem_num = 0;
+				// It should be here num_of_links instead of num_of_links-1 (previous instruction "num_of_links--")
+				if(bundle[b].members[bundle[b].num_of_links] != s)
 				{
-	                                uint8_t ml;
-	                                for(ml = 0; ml<bundle[b].num_of_links; ml++)
-	                                        if(bundle[b].members[ml] == s)
-	                                        {
-	                                                mem_num = ml;
-	                                                break;
-	                                        }
-	                                bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
-	                                LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
-                        	}
-                	}
-                	cluster_send_bundle(b);
-        	}
+					uint8_t ml;
+					for(ml = 0; ml<bundle[b].num_of_links; ml++)
+							if(bundle[b].members[ml] == s)
+							{
+									mem_num = ml;
+									break;
+							}
+					bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
+					LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
+
+					// If the killed session is the first of the bundle,
+					// the new first session must be stored in the cache_ipmap
+					// else the function sessionbyip return 0 and the sending not work any more (processipout).
+					if (mem_num == 0)
+					{
+						sessionidt new_s = bundle[b].members[0];
+
+						routed = 0;
+						// Add the route for this session.
+						for (r = 0; r < MAXROUTE && session[new_s].route[r].ip; r++)
+						{
+							int i, prefixlen;
+							in_addr_t ip;
+
+							prefixlen = session[new_s].route[r].prefixlen;
+							ip = session[new_s].route[r].ip;
+
+							if (!prefixlen) prefixlen = 32;
+							ip &= 0xffffffff << (32 - prefixlen);	// Force the ip to be the first one in the route.
+
+							for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
+								cache_ipmap(i, new_s);
+						}
+						cache_ipmap(session[new_s].ip, new_s);
+
+						// IPV6 route
+						if (session[new_s].ipv6prefixlen)
+							cache_ipv6map(session[new_s].ipv6route, session[new_s].ipv6prefixlen, new_s);
+					}
+				}
+			}
+
+			cluster_send_bundle(b);
+        }
 	}
 
 	if (session[s].throttle_in || session[s].throttle_out) // Unthrottle if throttled.
@@ -3092,8 +3150,9 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 			}
 
 			session[s].last_packet = session[s].last_data = time_now;
-			if (session[s].walled_garden && !config->cluster_iam_master)
+			if (!config->cluster_iam_master)
 			{
+				// The fragments reconstruction is managed by the Master.
 				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port);
 				return;
 			}

@@ -1919,18 +1919,22 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		else if (M_offset > 0)
 		{
 			uint32_t b_seq = min;
-			if (min == seq_num)
+			if ((min == seq_num) && begin_frame)
 			{
-				if (begin_frame)
-				{
-					// Set new Start sequence
-					this_fragmentation->start_index = begin_index;
-					this_fragmentation->start_seq = min;
-					frag_offset = 0;
-				}
+				// Set new Start sequence
+				this_fragmentation->start_index = begin_index;
+				this_fragmentation->start_seq = min;
+				frag_offset = 0;
 			}
 			else
 			{
+				if (min == seq_num)
+				{
+					M_offset--;
+					begin_index = (begin_index ? (begin_index -1) : (MAXFRAGNUM -1));
+					b_seq--;
+				}
+
 				// Find the Begin sequence
 				while (this_fragmentation->fragment[begin_index].length)
 				{

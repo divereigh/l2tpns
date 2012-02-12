@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn1.2) unstable; urgency=low
+
+  * Fix: MLPPP improvments.
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Sun, 12 Feb 2012 13:53:13 +0100
+
 l2tpns (2.2.1-2fdn1.1) unstable; urgency=low
 
   * Fix MLPPP functionality

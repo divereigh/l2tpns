@@ -1820,7 +1820,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	uint32_t seq_num, seq_num_next, seq_num_prev;
 	uint32_t i;
 	uint8_t flags = *p;
-	uint16_t begin_index, end_index, start_index;
+	uint16_t begin_index, end_index;
 
 	// Perform length checking
 	if(l > MAXFRAGLEN)
@@ -1873,136 +1873,46 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 	// calculate this fragment's offset from the begin seq in the bundle
 	frag_offset = (int) (seq_num - this_fragmentation->start_seq);
-	start_index = this_fragmentation->start_index;
 	
 	sess_local[s].last_seq = seq_num;
 
-	uint32_t min;
+	uint32_t Mmin;
 
 	if (seq_num < this_fragmentation->M)
 	{
-		min = seq_num;
+		Mmin = seq_num;
 		this_fragmentation->M = seq_num;
 	}
 	else
 	{
-		min = sess_local[(this_bundle->members[0])].last_seq;
+		Mmin = sess_local[(this_bundle->members[0])].last_seq;
 		for (i = 1; i < this_bundle->num_of_links; i++)
 		{
 			uint32_t s_seq = sess_local[(this_bundle->members[i])].last_seq;
-			if (s_seq < min)
-				min = s_seq;
+			if (s_seq < Mmin)
+				Mmin = s_seq;
 		}
-		this_fragmentation->M = min;
+		this_fragmentation->M = Mmin;
 	}
 
-	if (min >= (this_fragmentation->start_seq + this_bundle->num_of_links))
+	// calculate M offset of the M seq in the bundle
+	int M_offset = (int) (Mmin - this_fragmentation->start_seq);
+
+	if (M_offset >= MAXFRAGNUM)
 	{
-		// Find the new start sequence, the previous frag are lost
-		// calculate M offset of the M seq in the bundle
-		int M_offset = (int) (min - this_fragmentation->start_seq);
+		// There have a long break of the link !!!!!!!!
+		// M_offset is bigger that the fragmentation buffer size
+		LOG(3, s, t, "MPPP: M_offset out of range, min:%d, begin_seq:%d\n", Mmin, this_fragmentation->start_seq);
+
+		// Calculate the new start index, the previous frag are lost
 		begin_index = (M_offset + this_fragmentation->start_index) & MAXFRAGNUM_MASK;
 
-		if (M_offset >= MAXFRAGNUM)
-		{
-			// There have a long break of the link !!!!!!!!
-			// M_offset is bigger that the fragmentation buffer size
-			LOG(3, s, t, "MPPP: M_offset out of range, min:%d, begin_seq:%d, size frag:%d\n", min, this_fragmentation->start_seq, l);
-
-			// Set new Start sequence
-			this_fragmentation->start_index = begin_index;
-			this_fragmentation->start_seq = min;
-			M_offset = 0;
-			// recalculate the fragment offset from the new begin seq in the bundle
-			frag_offset = (int) (seq_num - min);
-		}
-		else if (M_offset > 0)
-		{
-			uint32_t b_seq = min;
-			if ((min == seq_num) && begin_frame)
-			{
-				// Set new Start sequence
-				this_fragmentation->start_index = begin_index;
-				this_fragmentation->start_seq = min;
-				frag_offset = 0;
-			}
-			else
-			{
-				if (min == seq_num)
-				{
-					M_offset--;
-					begin_index = (begin_index ? (begin_index -1) : (MAXFRAGNUM -1));
-					b_seq--;
-				}
-
-				// Find the Begin sequence
-				while (this_fragmentation->fragment[begin_index].length)
-				{
-					if (b_seq == this_fragmentation->fragment[begin_index].seq)
-					{
-						if (this_fragmentation->fragment[begin_index].flags & MP_BEGIN)
-							break;
-					}
-					else
-					{
-						// This fragment is lost, it was never completed the packet.
-						LOG(3, this_fragmentation->fragment[begin_index].sid, this_fragmentation->fragment[begin_index].tid,
-							"MPPP: (FIND) seq_num:%d frag_index:%d flags:%d is LOST\n",
-							this_fragmentation->fragment[begin_index].seq, begin_index, this_fragmentation->fragment[begin_index].flags);
-						// this frag is lost
-						this_fragmentation->fragment[begin_index].length = 0;
-						this_fragmentation->fragment[begin_index].flags = 0;
-						break;
-					}
-					begin_index = (begin_index ? (begin_index -1) : (MAXFRAGNUM -1));
-					b_seq--;
-				}
-
-				// begin sequence found ?
-				if (this_fragmentation->fragment[begin_index].length)
-				{
-					// Set new Start sequence
-					this_fragmentation->start_index = begin_index;
-					this_fragmentation->start_seq = b_seq;
-					// recalculate the fragment offset from the new begin seq in the bundle
-					frag_offset = (int) (seq_num - b_seq);
-				}
-			}
-		}
-	}
-	else if ((this_fragmentation->fragment[start_index].length) &&
-			 (!(this_fragmentation->fragment[start_index].flags & MP_BEGIN)))
-	{
-		uint32_t f_seq = this_fragmentation->start_seq;
-		end_index = start_index;
-		// Find the Begin sequence
-		while (this_fragmentation->fragment[end_index].length)
-		{
-			if (f_seq == this_fragmentation->fragment[end_index].seq)
-			{
-				if (this_fragmentation->fragment[end_index].flags & MP_BEGIN)
-					break;
-			}
-			else
-			{
-				// This fragment is lost, it was never completed the packet.
-				LOG(3, this_fragmentation->fragment[end_index].sid, this_fragmentation->fragment[end_index].tid,
-					"MPPP: (FIND2) seq_num:%d frag_index:%d flags:%d is LOST\n",
-					this_fragmentation->fragment[end_index].seq, end_index, this_fragmentation->fragment[end_index].flags);
-				// this frag is lost
-				this_fragmentation->fragment[end_index].length = 0;
-				this_fragmentation->fragment[end_index].flags = 0;
-				break;
-			}
-			end_index = (end_index +1) & MAXFRAGNUM_MASK;
-			f_seq++;
-		}
-
 		// Set new Start sequence
-		this_fragmentation->start_index = end_index;
-		this_fragmentation->start_seq = f_seq;
+		this_fragmentation->start_index = begin_index;
+		this_fragmentation->start_seq = Mmin;
+		M_offset = 0;
 		// recalculate the fragment offset from the new begin seq in the bundle
-		frag_offset = (int) (seq_num - f_seq);
+		frag_offset = (int) (seq_num - Mmin);
 	}
 
 	// discard this fragment if the packet comes before the start sequence
@@ -2012,7 +1922,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		LOG(3, s, t, "MPPP: packet comes before the next, seq:%d, begin_seq:%d, size frag:%d\n", seq_num, this_fragmentation->start_seq, l);
 		return;
 	}
-	
+
 	// discard if frag_offset is bigger that the fragmentation buffer size
 	if (frag_offset >= MAXFRAGNUM)
 	{
@@ -2024,160 +1934,242 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	//caculate received fragment's index in the fragment array
 	frag_index = (frag_offset + this_fragmentation->start_index) & MAXFRAGNUM_MASK;
 
+	// insert the frame in it's place
+	fragmentt *this_frag = &this_fragmentation->fragment[frag_index];
+
+	if (this_frag->length > 0)
+		// This fragment is lost, It was around the buffer and it was never completed the packet.
+		LOG(3, this_frag->sid, this_frag->tid, "MPPP: (INSERT) seq_num:%d frag_index:%d flags:%d is LOST\n",
+			this_frag->seq, frag_index, this_frag->flags);
+
+	this_frag->length = l;
+	this_frag->sid = s;
+	this_frag->flags = flags;
+	this_frag->seq = seq_num;
+	memcpy(this_frag->data, p, l);
+
+	LOG(4, s, t, "MPPP: seq_num:%d frag_index:%d INSERTED flags: %02X\n",  seq_num, frag_index, flags);
+
+	//next frag index
+	frag_index_next = (frag_index + 1) & MAXFRAGNUM_MASK;
+	//previous frag index
+	frag_index_prev = (frag_index - 1) & MAXFRAGNUM_MASK;
+	// next seq
+	seq_num_next = seq_num + 1;
+	// previous seq
+	seq_num_prev = seq_num - 1;
+
+	// Clean the buffer and log the lost fragments
+	if ((frag_index_next != this_fragmentation->start_index) && this_fragmentation->fragment[frag_index_next].length)
 	{
-		// insert the frame in it's place
-		fragmentt *this_frag = &this_fragmentation->fragment[frag_index];
-
-		if (this_frag->length > 0)
+		// check if the next frag is a lost fragment
+		if (this_fragmentation->fragment[frag_index_next].seq != seq_num_next)
+		{
 			// This fragment is lost, It was around the buffer and it was never completed the packet.
-			LOG(3, this_frag->sid, this_frag->tid, "MPPP: (INSERT) seq_num:%d frag_index:%d flags:%d is LOST\n",
-				this_frag->seq, frag_index, this_frag->flags);
+			LOG(3, this_fragmentation->fragment[frag_index_next].sid, this_fragmentation->fragment[frag_index_next].tid,
+				"MPPP: (NEXT) seq_num:%d frag_index:%d flags:%d is LOST\n",
+				this_fragmentation->fragment[frag_index_next].seq, frag_index_next, this_fragmentation->fragment[frag_index_next].flags);
+			// this frag is lost
+			this_fragmentation->fragment[frag_index_next].length = 0;
+			this_fragmentation->fragment[frag_index_next].flags = 0;
 
-		this_frag->length = l;
-		this_frag->sid = s;
-		this_frag->flags = flags;
-		this_frag->seq = seq_num;
-		memcpy(this_frag->data, p, l);
-
-		LOG(4, s, t, "MPPP: seq_num:%d frag_index:%d INSERTED flags: %02X\n",  seq_num, frag_index, flags);
-
-		//next frag index
-		frag_index_next = (frag_index + 1) & MAXFRAGNUM_MASK;
-		//previous frag index
-		frag_index_prev = (frag_index - 1) & MAXFRAGNUM_MASK;
-		// next seq
-		seq_num_next = seq_num + 1;
-		// previous seq
-		seq_num_prev = seq_num - 1;
-
-		if ((frag_index_next != this_fragmentation->start_index) && this_fragmentation->fragment[frag_index_next].length)
-		{
-			// check if the next frag is a lost fragment
-			if (this_fragmentation->fragment[frag_index_next].seq != seq_num_next)
-			{
-				// This fragment is lost, It was around the buffer and it was never completed the packet.
-				LOG(3, this_fragmentation->fragment[frag_index_next].sid, this_fragmentation->fragment[frag_index_next].tid,
-					"MPPP: (NEXT) seq_num:%d frag_index:%d flags:%d is LOST\n",
-					this_fragmentation->fragment[frag_index_next].seq, frag_index_next, this_fragmentation->fragment[frag_index_next].flags);
-				// this frag is lost
-				this_fragmentation->fragment[frag_index_next].length = 0;
-				this_fragmentation->fragment[frag_index_next].flags = 0;
-
-				if (begin_frame && (!end_frame)) return; // assembling frame failed
-			}
+			if (begin_frame && (!end_frame)) return; // assembling frame failed
 		}
+	}
 
-		if ((frag_index != this_fragmentation->start_index) && this_fragmentation->fragment[frag_index_prev].length)
+	// Clean the buffer and log the lost fragments
+	if ((frag_index != this_fragmentation->start_index) && this_fragmentation->fragment[frag_index_prev].length)
+	{
+		// check if the next frag is a lost fragment
+		if (this_fragmentation->fragment[frag_index_prev].seq != seq_num_prev)
 		{
-			// check if the next frag is a lost fragment
-			if (this_fragmentation->fragment[frag_index_prev].seq != seq_num_prev)
-			{
-				// This fragment is lost, It was around the buffer and it was never completed the packet.
-				LOG(3, this_fragmentation->fragment[frag_index_prev].sid, this_fragmentation->fragment[frag_index_prev].tid,
-					"MPPP: (PREV) seq_num:%d frag_index:%d flags:%d is LOST\n",
-					this_fragmentation->fragment[frag_index_prev].seq, frag_index_prev, this_fragmentation->fragment[frag_index_prev].flags);
+			// This fragment is lost, It was around the buffer and it was never completed the packet.
+			LOG(3, this_fragmentation->fragment[frag_index_prev].sid, this_fragmentation->fragment[frag_index_prev].tid,
+				"MPPP: (PREV) seq_num:%d frag_index:%d flags:%d is LOST\n",
+				this_fragmentation->fragment[frag_index_prev].seq, frag_index_prev, this_fragmentation->fragment[frag_index_prev].flags);
 
-				this_fragmentation->fragment[frag_index_prev].length = 0;
-				this_fragmentation->fragment[frag_index_prev].flags = 0;
+			this_fragmentation->fragment[frag_index_prev].length = 0;
+			this_fragmentation->fragment[frag_index_prev].flags = 0;
 
-				if (end_frame && (!begin_frame)) return; // assembling frame failed
-			}
+			if (end_frame && (!begin_frame)) return; // assembling frame failed
 		}
+	}
 
-assembling_frame:
-		// try to assemble the frame that has the received fragment as a member		
-		// get the beginning of this frame
-		begin_index = end_index = this_fragmentation->start_index;
+find_frame:
+	begin_index = this_fragmentation->start_index;
+	uint32_t b_seq = this_fragmentation->start_seq;
+	// Try to find a Begin sequence from the start_seq sequence to M sequence
+	while (b_seq < Mmin)
+	{
 		if (this_fragmentation->fragment[begin_index].length)
 		{
-			if (!(this_fragmentation->fragment[begin_index].flags & MP_BEGIN))
-				return; // assembling frame failed
-		}
-		else
-			return; // assembling frame failed
-
-		// get the end of his frame
-		while (this_fragmentation->fragment[end_index].length)
-		{
-			if (this_fragmentation->fragment[end_index].flags & MP_END)
-				break;
-
-			end_index = (end_index +1) & MAXFRAGNUM_MASK;
-
-			if (end_index == this_fragmentation->start_index)
-				return; // assembling frame failed
-		}
-
-		// return if a lost fragment is found
-		if (!(this_fragmentation->fragment[end_index].length))
-			return; // assembling frame failed
-
-		// assemble the packet
-		//assemble frame, process it, reset fragmentation
-		uint16_t cur_len = 4;   // This is set to 4 to leave 4 bytes for function processipin
-
-		LOG(4, s, t, "MPPP: processing fragments from %d to %d\n", begin_index, end_index);
-		// Push to the receive buffer
-
-		for (i = begin_index;; i = (i + 1) & MAXFRAGNUM_MASK)
-		{
-			this_frag = &this_fragmentation->fragment[i];
-			if(cur_len + this_frag->length > MAXETHER)
-			{
-				LOG(2, s, t, "MPPP: discarding reassembled frames larger than MAXETHER\n");
-				break;
-			}
-
-			memcpy(this_fragmentation->reassembled_frame+cur_len, this_frag->data, this_frag->length);
-			LOG(5, s, t, "MPPP: processing frame at %d, with len %d\n", i, this_frag->length);
-
-			cur_len += this_frag->length;
-			if (i == end_index)
-			{
-				this_fragmentation->re_frame_len = cur_len;
-				this_fragmentation->re_frame_begin_index = begin_index;
-				this_fragmentation->re_frame_end_index = end_index;
-				// Process the resassembled frame
-				LOG(5, s, t, "MPPP: Process the reassembled frame, len=%d\n",cur_len);
-				processmpframe(s, t, this_fragmentation->reassembled_frame, this_fragmentation->re_frame_len, 1);
-				break;
-			}
-		}
-
-		// Set reassembled frame length to zero after processing it
-		this_fragmentation->re_frame_len = 0;
-		for (i = begin_index;; i = (i + 1) & MAXFRAGNUM_MASK)
-		{
-			this_fragmentation->fragment[i].length = 0;      // Indicates that this fragment has been consumed
-			this_fragmentation->fragment[i].flags = 0;
-			if (i == end_index)
-				break;
-		}
-
-		// Set the new start_index and start_seq
-		this_fragmentation->start_index = (end_index + 1) & MAXFRAGNUM_MASK;
-		this_fragmentation->start_seq = this_fragmentation->fragment[end_index].seq + 1;
-
-		LOG(4, s, t, "MPPP after assembling: start index is = %d, start seq=%d\n", this_fragmentation->start_index, this_fragmentation->start_seq);
-
-		begin_index = this_fragmentation->start_index;
-		if (this_fragmentation->fragment[begin_index].length)
-		{
-			if (this_fragmentation->fragment[begin_index].seq == this_fragmentation->start_seq)
+			if (b_seq == this_fragmentation->fragment[begin_index].seq)
 			{
 				if (this_fragmentation->fragment[begin_index].flags & MP_BEGIN)
-					goto assembling_frame;
+				{
+					int isfoundE = 0;
+					// Adjust the new start sequence and start index
+					this_fragmentation->start_index = begin_index;
+					this_fragmentation->start_seq = b_seq;
+					// Begin Sequence found, now try to found the End Sequence to complete the frame
+					end_index = begin_index;
+					while (b_seq < Mmin)
+					{
+						if (this_fragmentation->fragment[end_index].length)
+						{
+							if (b_seq == this_fragmentation->fragment[end_index].seq)
+							{
+								if (this_fragmentation->fragment[end_index].flags & MP_END)
+								{
+									// The End sequence was found and the frame is complete
+									isfoundE = 1;
+									break;
+								}
+							}
+							else
+							{
+								// This fragment is lost, it was never completed the packet.
+								LOG(3, this_fragmentation->fragment[end_index].sid, this_fragmentation->fragment[end_index].tid,
+									"MPPP: (FIND END) seq_num:%d frag_index:%d flags:%d is LOST\n",
+									this_fragmentation->fragment[end_index].seq, begin_index, this_fragmentation->fragment[end_index].flags);
+								// this frag is lost
+								this_fragmentation->fragment[end_index].length = 0;
+								this_fragmentation->fragment[end_index].flags = 0;
+								// This frame is not complete find the next Begin
+								break;
+							}
+						}
+						else
+						{
+							// This frame is not complete find the next Begin if exist
+							break;
+						}
+						end_index = (end_index +1) & MAXFRAGNUM_MASK;
+						b_seq++;
+					}
+
+					if (isfoundE)
+						// The End sequence was found and the frame is complete
+						break;
+					else
+						// find the next Begin
+						begin_index = end_index;
+				}
 			}
 			else
 			{
+				// This fragment is lost, it was never completed the packet.
 				LOG(3, this_fragmentation->fragment[begin_index].sid, this_fragmentation->fragment[begin_index].tid,
-					"MPPP: START seq_num:%d frag_index:%d flags:%d is LOST\n",
+					"MPPP: (FIND BEGIN) seq_num:%d frag_index:%d flags:%d is LOST\n",
 					this_fragmentation->fragment[begin_index].seq, begin_index, this_fragmentation->fragment[begin_index].flags);
+				// this frag is lost
 				this_fragmentation->fragment[begin_index].length = 0;
 				this_fragmentation->fragment[begin_index].flags = 0;
 			}
 		}
+		begin_index = (begin_index +1) & MAXFRAGNUM_MASK;
+		b_seq++;
 	}
+
+assembling_frame:
+	// try to assemble the frame that has the received fragment as a member		
+	// get the beginning of this frame
+	begin_index = end_index = this_fragmentation->start_index;
+	if (this_fragmentation->fragment[begin_index].length)
+	{
+		if (!(this_fragmentation->fragment[begin_index].flags & MP_BEGIN))
+		{
+			// should occur only after an "M_Offset out of range"
+			// The start sequence must be a begin sequence
+			this_fragmentation->start_index = (begin_index +1) & MAXFRAGNUM_MASK;
+			this_fragmentation->start_seq++;
+			return; // assembling frame failed
+		}
+	}
+	else
+		return; // assembling frame failed
+
+	// get the end of his frame
+	while (this_fragmentation->fragment[end_index].length)
+	{
+		if (this_fragmentation->fragment[end_index].flags & MP_END)
+			break;
+
+		end_index = (end_index +1) & MAXFRAGNUM_MASK;
+
+		if (end_index == this_fragmentation->start_index)
+			return; // assembling frame failed
+	}
+
+	// return if a lost fragment is found
+	if (!(this_fragmentation->fragment[end_index].length))
+		return; // assembling frame failed
+
+	// assemble the packet
+	//assemble frame, process it, reset fragmentation
+	uint16_t cur_len = 4;   // This is set to 4 to leave 4 bytes for function processipin
+
+	LOG(4, s, t, "MPPP: processing fragments from %d to %d\n", begin_index, end_index);
+	// Push to the receive buffer
+
+	for (i = begin_index;; i = (i + 1) & MAXFRAGNUM_MASK)
+	{
+		this_frag = &this_fragmentation->fragment[i];
+		if(cur_len + this_frag->length > MAXETHER)
+		{
+			LOG(2, s, t, "MPPP: discarding reassembled frames larger than MAXETHER\n");
+			break;
+		}
+
+		memcpy(this_fragmentation->reassembled_frame+cur_len, this_frag->data, this_frag->length);
+		LOG(5, s, t, "MPPP: processing frame at %d, with len %d\n", i, this_frag->length);
+
+		cur_len += this_frag->length;
+		if (i == end_index)
+		{
+			this_fragmentation->re_frame_len = cur_len;
+			this_fragmentation->re_frame_begin_index = begin_index;
+			this_fragmentation->re_frame_end_index = end_index;
+			// Process the resassembled frame
+			LOG(5, s, t, "MPPP: Process the reassembled frame, len=%d\n",cur_len);
+			processmpframe(s, t, this_fragmentation->reassembled_frame, this_fragmentation->re_frame_len, 1);
+			break;
+		}
+	}
+
+	// Set reassembled frame length to zero after processing it
+	this_fragmentation->re_frame_len = 0;
+	for (i = begin_index;; i = (i + 1) & MAXFRAGNUM_MASK)
+	{
+		this_fragmentation->fragment[i].length = 0;      // Indicates that this fragment has been consumed
+		this_fragmentation->fragment[i].flags = 0;
+		if (i == end_index)
+			break;
+	}
+
+	// Set the new start_index and start_seq
+	this_fragmentation->start_index = (end_index + 1) & MAXFRAGNUM_MASK;
+	this_fragmentation->start_seq = this_fragmentation->fragment[end_index].seq + 1;
+	LOG(4, s, t, "MPPP after assembling: start index is = %d, start seq=%d\n", this_fragmentation->start_index, this_fragmentation->start_seq);
+
+	begin_index = this_fragmentation->start_index;
+	if ((this_fragmentation->fragment[begin_index].length) &&
+		(this_fragmentation->fragment[begin_index].seq != this_fragmentation->start_seq))
+	{
+		LOG(3, this_fragmentation->fragment[begin_index].sid, this_fragmentation->fragment[begin_index].tid,
+				"MPPP: (START) seq_num:%d frag_index:%d flags:%d is LOST\n",
+				this_fragmentation->fragment[begin_index].seq, begin_index, this_fragmentation->fragment[begin_index].flags);
+			this_fragmentation->fragment[begin_index].length = 0;
+			this_fragmentation->fragment[begin_index].flags = 0;
+	}
+
+	if (this_fragmentation->start_seq <= Mmin)
+		// It's possible to find other complete frame or lost frame.
+		goto find_frame;
+	else if ((this_fragmentation->fragment[begin_index].length) &&
+			  (this_fragmentation->fragment[begin_index].flags & MP_BEGIN))
+		// may be that the next frame is completed
+		goto assembling_frame;
 
 	return;
 }

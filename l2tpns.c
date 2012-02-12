@@ -1500,7 +1500,7 @@ static void processipout(uint8_t *buf, int len)
 			//for rotate traffic among the member links
 			uint32_t divisor = num_of_links;
 			if (divisor > 2)
-				divisor--;
+				divisor = divisor/2 + (divisor & 1);
 
 			// Partition the packet to "num_of_links" fragments
 			uint32_t fraglen = len / divisor;
@@ -1542,7 +1542,8 @@ static void processipout(uint8_t *buf, int len)
 			if (remain != last_fraglen)
 				LOG(3, s, t, "PROCESSIPOUT ERROR REMAIN != LAST_FRAGLEN, %d != %d\n", remain, last_fraglen);
 		}
-		else {
+		else
+		{
 			// Send it as one frame
 			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
 			if (!p) return;

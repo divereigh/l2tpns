@@ -261,6 +261,7 @@ typedef struct {
 	tunnelidt tid;			// Fragment originating tunnel
 	uint8_t	flags;			// MP frame flags
 	uint32_t seq;			// fragment seq num
+	uint32_t jitteravg;
         uint16_t length;                // Fragment length
         uint8_t data[MAXFRAGLEN];       // Fragment data
 } fragmentt;
@@ -408,6 +409,11 @@ typedef struct
 
 	// Last Multilink frame sequence number received
 	uint32_t last_seq;
+
+	// jitter average of the session
+	uint32_t jitteravg;
+	// time in milliseconds of the last fragment.
+	uint64_t prev_time;
 } sessionlocalt;
 
 // session flags

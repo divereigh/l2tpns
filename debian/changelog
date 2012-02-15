@@ -1,3 +1,10 @@
+l2tpns (2.2.1-2fdn1.3) unstable; urgency=low
+
+  * Fix: Sends small packets in the MPPPP frame (for reorder).
+  * Fix: Calculates jitter and jitter traces for analysis.
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Wed, 15 Feb 2012 14:15:59 +0100
+
 l2tpns (2.2.1-2fdn1.2) unstable; urgency=low
 
   * Fix: MLPPP improvments.

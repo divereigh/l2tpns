@@ -49,7 +49,7 @@
 #define RINGBUFFER_SIZE	10000		// Number of ringbuffer entries to allocate
 #define MAX_LOG_LENGTH	512		// Maximum size of log message
 #define ECHO_TIMEOUT	10		// Time between last packet sent and LCP ECHO generation
-#define IDLE_TIMEOUT	240		// Time between last packet seen and session shutdown
+#define IDLE_ECHO_TIMEOUT	240		// Time between last packet seen and session shutdown
 #define BUSY_WAIT_TIME	3000		// 5 minutes in 1/10th seconds to wait for radius to cleanup on shutdown
 
 #define MP_BEGIN        0x80            // This value is used when (b)egin bit is set in MP header
@@ -746,6 +746,10 @@ typedef struct
 	in_addr_t	nexthop_address;
 	struct in6_addr	nexthop6_address;
 #endif
+
+	int echo_timeout; // Time between last packet sent and LCP ECHO generation
+	int idle_echo_timeout; // Time between last packet seen and
+						   // Drop sessions who have not responded within IDLE_ECHO_TIMEOUT seconds
 } configt;
 
 enum config_typet { INT, STRING, UNSIGNED_LONG, SHORT, BOOL, IPv4, IPv6 };

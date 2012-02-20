@@ -162,6 +162,8 @@ config_descriptt config_values[] = {
 	CONFIG("hostname", hostname, STRING),
 	CONFIG("nexthop_address", nexthop_address, IPv4),
 	CONFIG("nexthop6_address", nexthop6_address, IPv6),
+	CONFIG("echo_timeout", echo_timeout, INT),
+	CONFIG("idle_echo_timeout", idle_echo_timeout, INT),
 	{ NULL, 0, 0, 0 },
 };
 
@@ -244,7 +246,7 @@ static clockt now(double *f)
 
 	// Time in milliseconds
 	time_now_ms = (t.tv_sec * 1000) + (t.tv_usec/1000);
-	
+
 	return (t.tv_sec - basetime) * 10 + t.tv_usec / 100000 + 1;
 }
 
@@ -1498,7 +1500,7 @@ static void processipout(uint8_t *buf, int len)
 		t = session[s].tunnel;
 		sp = &session[s];
 		LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
-		
+
 		if (num_of_links > 1)
 		{
 			if(len > MINFRAGLEN)
@@ -1523,7 +1525,7 @@ static void processipout(uint8_t *buf, int len)
 
 				remain -= fraglen;
 				while (remain > last_fraglen)
-				{ 
+				{
 					b->current_ses = (b->current_ses + 1) % num_of_links;
 					s = members[b->current_ses];
 					t = session[s].tunnel;
@@ -3481,8 +3483,8 @@ static void regular_cleanups(double period)
 			}
 		}
 
-		// Drop sessions who have not responded within IDLE_TIMEOUT seconds
-		if (session[s].last_packet && (time_now - session[s].last_packet >= IDLE_TIMEOUT))
+		// Drop sessions who have not responded within IDLE_ECHO_TIMEOUT seconds
+		if (session[s].last_packet && (time_now - session[s].last_packet >= config->idle_echo_timeout))
 		{
 			sessionshutdown(s, "No response to LCP ECHO requests.", CDN_ADMIN_DISC, TERM_LOST_SERVICE);
 			STAT(session_timeout);
@@ -3491,7 +3493,7 @@ static void regular_cleanups(double period)
 		}
 
 		// No data in ECHO_TIMEOUT seconds, send LCP ECHO
-		if (session[s].ppp.phase >= Establish && (time_now - session[s].last_packet >= ECHO_TIMEOUT) &&
+		if (session[s].ppp.phase >= Establish && (time_now - session[s].last_packet >= config->echo_timeout) &&
 			(time_now - sess_local[s].last_echo >= ECHO_TIMEOUT))
 		{
 			uint8_t b[MAXETHER];
@@ -4267,6 +4269,9 @@ static void initdata(int optdebug, char *optconfig)
 	config->ppp_max_failure = 5;
 	config->kill_timedout_sessions = 1;
 	strcpy(config->random_device, RANDOMDEVICE);
+	// Set default value echo_timeout and idle_echo_timeout
+	config->echo_timeout = ECHO_TIMEOUT;
+	config->idle_echo_timeout = IDLE_ECHO_TIMEOUT;
 
 	log_stream = stderr;
 

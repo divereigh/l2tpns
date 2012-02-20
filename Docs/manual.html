@@ -357,6 +357,17 @@ from the master.
 Determines the minumum number of up to date slaves required before the
 master will drop routes (default: 1).
 </LI>
+
+<LI><B>echo_timeout</B> (int)<BR>
+Time between last packet sent and LCP ECHO generation
+(default: 10 (seconds)).
+</LI>
+
+<LI><B>idle_echo_timeout</B> (int)<BR>
+Drop sessions who have not responded within idle_echo_timeout seconds
+(default: 240 (seconds))
+</LI>
+
 </UL>
 
 <P>BGP routing configuration is entered by the command:

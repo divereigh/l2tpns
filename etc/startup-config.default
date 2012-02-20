@@ -112,6 +112,11 @@ set accounting_dir "/var/run/l2tpns/acct"
 #set nexthop 10.0.1.1
 #set nexthop6 2001:db8::1
 
+# Time between last packet sent and LCP ECHO generation (default 10 seconds)
+#set echo_timeout 10
+# Drop sessions who have not responded within idle_echo_timeout seconds (default 240 seconds)
+#set idle_echo_timeout 240
+
 # Drop/kill sessions
 #load plugin "sessionctl"
 

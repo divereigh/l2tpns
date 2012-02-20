@@ -1879,9 +1879,12 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 	// calculate the jitter average
 	uint32_t ljitter = time_now_ms - sess_local[s].prev_time;
-	sess_local[s].jitteravg = (sess_local[s].jitteravg + ljitter)>>1;
-	sess_local[s].prev_time = time_now_ms;
-	
+	if (ljitter > 0)
+	{
+		sess_local[s].jitteravg = (sess_local[s].jitteravg + ljitter)>>1;
+		sess_local[s].prev_time = time_now_ms;
+	}
+
 	uint32_t Mmin;
 
 	if (seq_num < this_fragmentation->M)
@@ -2084,7 +2087,7 @@ find_frame:
 	}
 
 assembling_frame:
-	// try to assemble the frame that has the received fragment as a member		
+	// try to assemble the frame that has the received fragment as a member
 	// get the beginning of this frame
 	begin_index = end_index = this_fragmentation->start_index;
 	if (this_fragmentation->fragment[begin_index].length)

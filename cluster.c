@@ -364,6 +364,28 @@ int master_garden_packet(sessionidt s, uint8_t *data, int size)
 }
 
 //
+// Forward a MPPP packet to the master for handling.
+//
+// (Note that this must be called with the tun header
+// as the start of the data).
+// (i.e. this routine writes to data[-8]).
+int master_forward_mppp_packet(sessionidt s, uint8_t *data, int size)
+{
+	uint8_t *p = data - (2 * sizeof(uint32_t));
+	uint8_t *psave = p;
+
+	if (!config->cluster_master_address) // No election has been held yet. Just skip it.
+		return -1;
+
+	LOG(4, 0, 0, "Forward MPPP packet to master (size %d)\n", size);
+
+	add_type(&p, C_MPPP_FORWARD, s, NULL, 0);
+
+	return peer_send_data(config->cluster_master_address, psave, size + (2 * sizeof(uint32_t)));
+
+}
+
+//
 // Send a chunk of data as a heartbeat..
 // We save it in the history buffer as we do so.
 //
@@ -945,7 +967,7 @@ void cluster_heartbeat()
 		exit(1);
 	}
 
-	LOG(3, 0, 0, "Sending v%d heartbeat #%d, change #%" PRIu64 " with %d changes "
+	LOG(4, 0, 0, "Sending v%d heartbeat #%d, change #%" PRIu64 " with %d changes "
 		     "(%d x-sess, %d x-bundles, %d x-tunnels, %d highsess, %d highbund, %d hightun, size %d)\n",
 	    HB_VERSION, h.seq, h.table_version, config->cluster_num_changes,
 	    count, bcount, tcount, config->cluster_highest_sessionid, config->cluster_highest_bundleid,
@@ -1801,6 +1823,16 @@ int processcluster(uint8_t *data, int size, in_addr_t addr)
 
 			return 0;
 		}
+
+	case C_MPPP_FORWARD:
+		// Receive a MPPP packet from a slave.
+		if (!config->cluster_iam_master) {
+			LOG(0, 0, 0, "I'm not the master, but I got a C_MPPP_FORWARD from %s?\n", fmtaddr(addr, 0));
+			return -1;
+		}
+
+		processipout(p, s);
+		return 0;
 
 	case C_THROTTLE: {	// Receive a forwarded packet from a slave.
 		if (!config->cluster_iam_master) {

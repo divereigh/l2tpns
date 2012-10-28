@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn1.5) unstable; urgency=low
+
+  * MLPPP not working in cluster mode.
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Wed, 09 May 2012 17:25:05 +0200
+
 l2tpns (2.2.1-2fdn1.4) unstable; urgency=low
 
   * Add a echo_timeout configuration option.

@@ -23,6 +23,7 @@
 #define C_FORWARD_DAE		16	// A DAE packet for the master to handle
 #define C_BUNDLE		17	// Bundle structure.
 #define C_CBUNDLE		18	// Compressed bundle structure.
+#define C_MPPP_FORWARD	19	// MPPP Forwarded packet..
 
 #define HB_VERSION		6	// Protocol version number..
 #define HB_MAX_SEQ		(1<<30)	// Maximum sequence number. (MUST BE A POWER OF 2!)
@@ -84,6 +85,7 @@ int master_forward_packet(uint8_t *data, int size, in_addr_t addr, int port);
 int master_forward_dae_packet(uint8_t *data, int size, in_addr_t addr, int port);
 int master_throttle_packet(int tid, uint8_t *data, int size);
 int master_garden_packet(sessionidt s, uint8_t *data, int size);
+int master_forward_mppp_packet(sessionidt s, uint8_t *data, int size);
 void master_update_counts(void);
 void cluster_send_ping(time_t basetime);
 void cluster_heartbeat(void);

@@ -1330,7 +1330,8 @@ static void update_session_out_stat(sessionidt s, sessiont *sp, int len)
 
 // process outgoing (to tunnel) IP
 //
-static void processipout(uint8_t *buf, int len)
+// (i.e. this routine writes to data[-8]).
+void processipout(uint8_t *buf, int len)
 {
 	sessionidt s;
 	sessiont *sp;
@@ -1469,6 +1470,14 @@ static void processipout(uint8_t *buf, int len)
 
 	if(session[s].bundle != 0 && bundle[session[s].bundle].num_of_links > 1)
 	{
+
+		if (!config->cluster_iam_master)
+		{
+			// The MPPP packets must be managed by the Master.
+			master_forward_mppp_packet(s, data, size);
+			return;
+		}
+
 		// Add on L2TP header
 		sessionidt members[MAXBUNDLESES];
 		bundleidt bid = session[s].bundle;
@@ -1490,7 +1499,7 @@ static void processipout(uint8_t *buf, int len)
 
 		if (nb_opened < 1)
 		{
-			LOG(2, s, t, "MPPP: PROCESSIPOUT ERROR, no session opened in bundle:%d\n", bid);
+			LOG(3, s, t, "MPPP: PROCESSIPOUT ERROR, no session opened in bundle:%d\n", bid);
 			return;
 		}
 
@@ -2035,11 +2044,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 				{
 					uint8_t ml;
 					for(ml = 0; ml<bundle[b].num_of_links; ml++)
-							if(bundle[b].members[ml] == s)
-							{
-									mem_num = ml;
-									break;
-							}
+					if(bundle[b].members[ml] == s)
+					{
+							mem_num = ml;
+							break;
+					}
 					bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
 					LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
 
@@ -2615,7 +2624,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 				case 0:     // message type
 					message = ntohs(*(uint16_t *) b);
 					mandatory = flags & 0x80;
-					LOG(4, s, t, "   Message type = %u (%s)\n", *b, l2tp_code(message));
+					LOG(4, s, t, "   Message type = %u (%s)\n", message, l2tp_code(message));
 					break;
 				case 1:     // result code
 					{
@@ -3210,6 +3219,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 }
 
 // read and process packet on tun
+// (i.e. this routine writes to buf[-8]).
 static void processtun(uint8_t * buf, int len)
 {
 	LOG_HEX(5, "Receive TUN Data", buf, len);
@@ -3774,6 +3784,8 @@ static void mainloop(void)
 {
 	int i;
 	uint8_t buf[65536];
+	uint8_t *p = buf + 8; // for the hearder of the forwarded MPPP packet (see C_MPPP_FORWARD)
+	int size_bufp = sizeof(buf) - 8;
 	clockt next_cluster_ping = 0;	// send initial ping immediately
 	struct epoll_event events[BASE_FDS + RADIUS_FDS + EXTRA_FDS];
 	int maxevent = sizeof(events)/sizeof(*events);
@@ -4018,9 +4030,9 @@ static void mainloop(void)
 				// incoming IP
 				if (tun_ready)
 				{
-					if ((s = read(tunfd, buf, sizeof(buf))) > 0)
+					if ((s = read(tunfd, p, size_bufp)) > 0)
 					{
-						processtun(buf, s);
+						processtun(p, s);
 					    	tun_pkts++;
 					}
 					else

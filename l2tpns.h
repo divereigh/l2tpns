@@ -897,6 +897,7 @@ void adjust_tcp_mss(sessionidt s, tunnelidt t, uint8_t *buf, int len, uint8_t *t
 void sendipcp(sessionidt s, tunnelidt t);
 void sendipv6cp(sessionidt s, tunnelidt t);
 void processudp(uint8_t *buf, int len, struct sockaddr_in *addr);
+void processipout(uint8_t *buf, int len);
 void snoop_send_packet(uint8_t *packet, uint16_t size, in_addr_t destination, uint16_t port);
 int find_filter(char const *name, size_t len);
 int ip_filter(uint8_t *buf, int len, uint8_t filter);

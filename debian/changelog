@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn2) unstable; urgency=low
+
+  * merge from branch fendo-mods, MLPPP developments
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Sat, 17 Nov 2012 14:15:07 +0100
+
 l2tpns (2.2.1-2fdn1.5) unstable; urgency=low
 
   * MLPPP not working in cluster mode.

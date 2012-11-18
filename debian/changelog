@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn2.1) unstable; urgency=low
+
+  * Fix the inverted "delete/add" of the routes, in cluster mode. 
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Sun, 18 Nov 2012 15:59:44 +0100
+
 l2tpns (2.2.1-2fdn2) unstable; urgency=low
 
   * merge from branch fendo-mods, MLPPP developments

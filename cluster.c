@@ -1002,6 +1002,36 @@ static int type_changed(int type, int id)
 	return 1;
 }
 
+// The deleted session, must be before the new session
+int cluster_listinvert_session(int sidnew, int sidtodel)
+{
+	int i, inew = 0;
+
+	for (i = 0 ; i < config->cluster_num_changes ; ++i)
+	{
+		if ( cluster_changes[i].id == sidtodel && cluster_changes[i].type == C_CSESSION)
+			return 0;	// Deleted session already before the new session.
+
+		if ( cluster_changes[i].id == sidnew && cluster_changes[i].type == C_CSESSION)
+		{
+			inew = i;
+			break;
+		}
+	}
+
+	for ( ; i < config->cluster_num_changes ; ++i)
+	{
+		if ( cluster_changes[i].id == sidtodel && cluster_changes[i].type == C_CSESSION)
+		{
+			// Reverse position
+			cluster_changes[i].id = sidnew;
+			cluster_changes[inew].id = sidtodel;
+			return 1;
+		}
+	}
+
+	return 0;
+}
 
 // A particular session has been changed!
 int cluster_send_session(int sid)

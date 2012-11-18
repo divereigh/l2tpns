@@ -5227,18 +5227,18 @@ int sessionsetup(sessionidt s, tunnelidt t)
 	LOG(3, s, t, "Doing session setup for session\n");
 
 	// Join a bundle if the MRRU option is accepted
-        if(session[s].mrru > 0 && session[s].bundle == 0)
-        {
-                LOG(3, s, t, "This session can be part of multilink bundle\n");
-                if (join_bundle(s) > 0)
-                	cluster_send_bundle(session[s].bundle);
+	if(session[s].mrru > 0 && session[s].bundle == 0)
+	{
+		LOG(3, s, t, "This session can be part of multilink bundle\n");
+		if (join_bundle(s) > 0)
+			cluster_send_bundle(session[s].bundle);
 		else
 		{
 			LOG(0, s, t, "MPPP: Mismaching mssf option with other sessions in bundle\n");
 			sessionshutdown(s, "Mismaching mssf option.", CDN_NONE, TERM_SERVICE_UNAVAILABLE);
 			return 0;
 		}
-        }
+	}
 
 	if (!session[s].ip)
 	{
@@ -5253,7 +5253,6 @@ int sessionsetup(sessionidt s, tunnelidt t)
 			fmtaddr(htonl(session[s].ip), 0));
 	}
 
-
 	// Make sure this is right
 	session[s].tunnel = t;
 
@@ -5266,13 +5265,14 @@ int sessionsetup(sessionidt s, tunnelidt t)
 		for (i = 1; i <= config->cluster_highest_sessionid; i++)
 		{
 			if (i == s) continue;
-			if (!session[s].opened) continue;
+			if (!session[s].opened) break;
 			// Allow duplicate sessions for multilink ones of the same bundle.
-                        if (session[s].bundle && session[i].bundle && session[s].bundle == session[i].bundle)
-                                continue;
+			if (session[s].bundle && session[i].bundle && session[s].bundle == session[i].bundle) continue;
+
 			if (ip == session[i].ip)
 			{
 				sessionkill(i, "Duplicate IP address");
+				cluster_listinvert_session(s, i);
 				continue;
 			}
 
@@ -5280,16 +5280,16 @@ int sessionsetup(sessionidt s, tunnelidt t)
 			if (session[s].walled_garden || session[i].walled_garden) continue;
 			// Guest change
 			int found = 0;
-                        int gu;
-                        for (gu = 0; gu < guest_accounts_num; gu++)
-                        {
-                                if (!strcasecmp(user, guest_users[gu]))
-                                {
-                                        found = 1;
-                                        break;
-                                }
-                        }
-                        if (found) continue;
+			int gu;
+			for (gu = 0; gu < guest_accounts_num; gu++)
+			{
+				if (!strcasecmp(user, guest_users[gu]))
+				{
+					found = 1;
+					break;
+				}
+			}
+			if (found) continue;
 
 			// Drop the new session in case of duplicate sessionss, not the old one.
 			if (!strcasecmp(user, session[i].user))
@@ -5300,7 +5300,7 @@ int sessionsetup(sessionidt s, tunnelidt t)
 	// no need to set a route for the same IP address of the bundle
 	if (!session[s].bundle || (bundle[session[s].bundle].num_of_links == 1))
 	{
-	    	int routed = 0;
+		int routed = 0;
 
 		// Add the route for this session.
 		for (r = 0; r < MAXROUTE && session[s].route[r].ip; r++)

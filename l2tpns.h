@@ -321,7 +321,12 @@ typedef struct
 	char class[MAXCLASS];
 	uint8_t ipv6prefixlen;		// IPv6 route prefix length
 	struct in6_addr ipv6route;	// Static IPv6 route
+#ifdef LAC
+	sessionidt forwardtosession;	// LNS id_session to forward
+	char reserved[10];		// Space to expand structure without changing HB_VERSION
+#else
 	char reserved[12];		// Space to expand structure without changing HB_VERSION
+#endif
 }
 sessiont;
 
@@ -750,6 +755,9 @@ typedef struct
 	int echo_timeout; // Time between last packet sent and LCP ECHO generation
 	int idle_echo_timeout; // Time between last packet seen and
 						   // Drop sessions who have not responded within IDLE_ECHO_TIMEOUT seconds
+#ifdef LAC
+	int highest_rlnsid;
+#endif
 } configt;
 
 enum config_typet { INT, STRING, UNSIGNED_LONG, SHORT, BOOL, IPv4, IPv6 };
@@ -843,6 +851,13 @@ typedef struct
 #define TERM_PORT_REINIT		21
 #define TERM_PORT_DISABLED		22
 
+// on slaves, alow BGP to withdraw cleanly before exiting
+#define QUIT_DELAY	5
+
+// quit actions (master)
+#define QUIT_FAILOVER	1 // SIGTERM: exit when all control messages have been acked (for cluster failover)
+#define QUIT_SHUTDOWN	2 // SIGQUIT: shutdown sessions/tunnels, reject new connections
+
 // arp.c
 void sendarp(int ifr_idx, const unsigned char* mac, in_addr_t ip);
 
@@ -904,6 +919,13 @@ int ip_filter(uint8_t *buf, int len, uint8_t filter);
 int cmd_show_ipcache(struct cli_def *cli, char *command, char **argv, int argc);
 int cmd_show_hist_idle(struct cli_def *cli, char *command, char **argv, int argc);
 int cmd_show_hist_open(struct cli_def *cli, char *command, char **argv, int argc);
+#ifdef LAC
+tunnelidt lac_new_tunnel();
+void lac_tunnelclear(tunnelidt t);
+void lac_send_SCCRQ(tunnelidt t, uint8_t * auth, unsigned int auth_len);
+void lac_send_ICRQ(tunnelidt t, sessionidt s);
+void lac_tunnelshutdown(tunnelidt t, char *reason, int result, int error, char *msg);
+#endif
 
 #undef LOG
 #undef LOG_HEX

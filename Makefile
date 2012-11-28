@@ -43,6 +43,9 @@ endif
 DEFINES += -DBGP
 OBJS += bgp.o
 
+DEFINES += -DLAC
+OBJS += l2tplac.o
+
 all: programs plugins
 programs: $(PROGRAMS)
 plugins: $(PLUGINS)

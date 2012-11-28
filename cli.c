@@ -31,6 +31,9 @@
 #ifdef BGP
 #include "bgp.h"
 #endif
+#ifdef LAC
+#include "l2tplac.h"
+#endif
 
 extern tunnelt *tunnel;
 extern bundlet *bundle;
@@ -99,7 +102,9 @@ static int cmd_remove_plugin(struct cli_def *cli, char *command, char **argv, in
 static int cmd_uptime(struct cli_def *cli, char *command, char **argv, int argc);
 static int cmd_shutdown(struct cli_def *cli, char *command, char **argv, int argc);
 static int cmd_reload(struct cli_def *cli, char *command, char **argv, int argc);
-
+#ifdef LAC
+static int cmd_setforward(struct cli_def *cli, char *command, char **argv, int argc);
+#endif
 
 static int regular_stuff(struct cli_def *cli);
 
@@ -221,6 +226,10 @@ void init_cli()
 	cli_register_command(cli, c, "plugin", cmd_remove_plugin, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Remove a plugin");
 
 	cli_register_command(cli, NULL, "set", cmd_set, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Set a configuration variable");
+
+#ifdef LAC
+	cli_register_command(cli, NULL, "setforward", cmd_setforward, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Set the Remote LNS Forward");
+#endif
 
 	c = cli_register_command(cli, NULL, "ip", NULL, PRIVILEGE_PRIVILEGED, MODE_CONFIG, NULL);
 	cli_register_command(cli, c, "access-list", cmd_ip_access_list, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Add named access-list");
@@ -3095,3 +3104,53 @@ static int cmd_reload(struct cli_def *cli, char *command, char **argv, int argc)
 	kill(getppid(), SIGHUP);
 	return CLI_OK;
 }
+
+#ifdef LAC
+
+static int cmd_setforward(struct cli_def *cli, char *command, char **argv, int argc)
+{
+	int ret;
+
+	if (CLI_HELP_REQUESTED)
+	{
+		switch (argc)
+		{
+		case 1:
+			return cli_arg_help(cli, 0,
+				"MASK", "Users mask to forward (ex: myISP@operator.com)", NULL);
+
+		case 2:
+			return cli_arg_help(cli, 0,
+				"IP", "IP of the remote LNS(ex: 64.64.64.64)", NULL);
+
+		case 3:
+			return cli_arg_help(cli, 0,
+				"PORT", "Port of the remote LNS (ex: 1701)", NULL);
+
+		case 4:
+			return cli_arg_help(cli, 0,
+				"SECRET", "l2tp secret of the remote LNS (ex: mysecretpsw)", NULL);
+
+		default:
+			return cli_arg_help(cli, argc > 1, NULL);
+		}
+	}
+
+	if (argc != 4)
+	{
+		cli_error(cli, "Specify variable and value");
+		return CLI_OK;
+	}
+
+	// adremotelns(mask, IP_RemoteLNS, Port_RemoteLNS, SecretRemoteLNS)
+	ret = addremotelns(argv[0], argv[1], argv[2], argv[3]);
+
+	if (ret)
+		cli_print(cli, "setforward %s %s %s %s", argv[0], argv[1], argv[2], argv[3]);
+	else
+		cli_error(cli, "ERROR setforward %s %s %s %s", argv[0], argv[1], argv[2], argv[3]);
+
+	return CLI_OK;
+}
+
+#endif

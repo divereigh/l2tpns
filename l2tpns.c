@@ -53,6 +53,15 @@
 #include "bgp.h"
 #endif
 
+#ifdef LAC
+#include "l2tplac.h"
+#endif
+
+#ifdef LAC
+char * Vendor_name = "Linux L2TPNS";
+uint32_t call_serial_number = 0;
+#endif
+
 // Globals
 configt *config = NULL;		// all configuration
 int nlfd = -1;			// netlink socket
@@ -160,8 +169,10 @@ config_descriptt config_values[] = {
 	CONFIG("ipv6_prefix", ipv6_prefix, IPv6),
 	CONFIG("cli_bind_address", cli_bind_address, IPv4),
 	CONFIG("hostname", hostname, STRING),
+#ifdef BGP
 	CONFIG("nexthop_address", nexthop_address, IPv4),
 	CONFIG("nexthop6_address", nexthop6_address, IPv6),
+#endif
 	CONFIG("echo_timeout", echo_timeout, INT),
 	CONFIG("idle_echo_timeout", idle_echo_timeout, INT),
 	{ NULL, 0, 0, 0 },
@@ -223,13 +234,6 @@ static void processcontrol(uint8_t *buf, int len, struct sockaddr_in *addr, int 
 static tunnelidt new_tunnel(void);
 static void unhide_value(uint8_t *value, size_t len, uint16_t type, uint8_t *vector, size_t vec_len);
 static void bundleclear(bundleidt b);
-
-// on slaves, alow BGP to withdraw cleanly before exiting
-#define QUIT_DELAY	5
-
-// quit actions (master)
-#define QUIT_FAILOVER	1 // SIGTERM: exit when all control messages have been acked (for cluster failover)
-#define QUIT_SHUTDOWN	2 // SIGQUIT: shutdown sessions/tunnels, reject new connections
 
 // return internal time (10ths since process startup), set f if given
 // as a side-effect sets time_now, and time_changed
@@ -2719,6 +2723,15 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 					}
 					break;
 				case 13:    // Response
+#ifdef LAC
+					if (istunneltolns(t))
+					{
+						chapresponse = calloc(17, 1);
+						memcpy(chapresponse, b, (n < 17) ? n : 16);
+						LOG(1, s, t, "received challenge response from (REMOTE LNS)\n");
+					}
+					else
+#endif /* LAC */
 					// Why did they send a response? We never challenge.
 					LOG(2, s, t, "   received unexpected challenge response\n");
 					break;
@@ -2962,6 +2975,39 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 				case 2:       // SCCRP
 					tunnel[t].state = TUNNELOPEN;
 					tunnel[t].lastrec = time_now;
+#ifdef LAC
+					LOG(1, s, t, "Recieved SCCRP (REMOTE LNS)\n");
+					if (main_quit != QUIT_SHUTDOWN)
+					{
+						if (istunneltolns(t) && chapresponse)
+						{
+							hasht hash;
+
+							calc_lac_auth(t, 2, hash); // id = 2 (SCCRP)
+							// check authenticator
+							if (memcmp(hash, chapresponse, 16) == 0)
+							{
+								controlt *c = controlnew(3); // sending SCCCN
+								controls(c, 7, hostname, 1); // host name
+								controls(c, 8, Vendor_name, 1); // Vendor name
+								control16(c, 2, version, 1); // protocol version
+								control32(c, 3, 3, 1); // framing Capabilities
+								control16(c, 9, t, 1); // assigned tunnel
+								controladd(c, 0, t); // send
+
+								LOG(1, s, t, "sending SCCCN (REMOTE LNS)\n");
+							}
+							else
+							{
+								tunnelshutdown(t, "(REMOTE LNS) Bad chap response", 4, 0, 0);
+							}
+						}
+					}
+					else
+					{
+						tunnelshutdown(t, "Shutting down", 6, 0, 0);
+					}
+#endif /* LAC */
 					break;
 				case 3:       // SCCN
 					tunnel[t].state = TUNNELOPEN;
@@ -3029,7 +3075,23 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 					}
 					return;
 				case 11:      // ICRP
-					// TBA
+#ifdef LAC
+				LOG(1, s, t, "Recieved ICRP (REMOTE LNS)\n");
+				if (session[s].forwardtosession)
+				{
+					controlt *c = controlnew(12); // ICCN
+
+					session[s].opened = time_now;
+					session[s].tunnel = t;
+					session[s].far = asession;
+					session[s].last_packet = session[s].last_data = time_now;
+
+					control32(c, 19, 1, 1); // Framing Type
+					control32(c, 24, 10000000, 1); // Tx Connect Speed
+					controladd(c, asession, t); // send the message
+					LOG(1, s, t, "Sending ICCN (REMOTE LNS)\n");
+				}
+#endif /* LAC */
 					break;
 				case 12:      // ICCN
 					if (amagic == 0) amagic = time_now;
@@ -3052,6 +3114,9 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 
 				case 14:      // CDN
 					controlnull(t); // ack
+#ifdef LAC
+
+#endif /* LAC */
 					sessionshutdown(s, disc_reason, CDN_NONE, disc_cause);
 					break;
 				case 0xFFFF:
@@ -3101,6 +3166,16 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 			l -= 2;
 		}
 
+#ifdef LAC
+		if (session[s].forwardtosession)
+		{
+			LOG(4, s, t, "Forwarding data session to %u (REMOTE LNS)\n", session[s].forwardtosession);
+			// Forward to Remote LNS
+			session_forward_tolns(buf, len, s, proto);
+			return;
+		}
+#endif /* LAC */
+
 		if (s && !session[s].opened)	// Is something wrong??
 		{
 			if (!config->cluster_iam_master)
@@ -3109,7 +3184,6 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port);
 				return;
 			}
-
 
 			LOG(1, s, t, "UDP packet contains session which is not opened.  Dropping packet.\n");
 			STAT(tunnel_rx_errors);
@@ -4400,6 +4474,10 @@ static void initdata(int optdebug, char *optconfig)
 		exit(1);
 	}
 #endif /* BGP */
+
+#ifdef LAC
+	initremotelnsdata();
+#endif
 }
 
 static int assign_ip_address(sessionidt s)
@@ -6146,3 +6224,52 @@ int ip_filter(uint8_t *buf, int len, uint8_t filter)
 	// default deny
     	return 0;
 }
+
+#ifdef LAC
+
+tunnelidt lac_new_tunnel()
+{
+	return new_tunnel();
+}
+
+void lac_tunnelclear(tunnelidt t)
+{
+	tunnelclear(t);
+}
+
+void lac_send_SCCRQ(tunnelidt t, uint8_t * auth, unsigned int auth_len)
+{
+	uint16_t version = 0x0100;	// protocol version
+
+	tunnel[t].state = TUNNELOPENING;
+
+	// Sent SCCRQ - Start Control Connection Request
+	controlt *c = controlnew(1); // sending SCCRQ
+	controls(c, 7, hostname, 1); // host name
+	controls(c, 8, Vendor_name, 1); // Vendor name
+	control16(c, 2, version, 1); // protocol version
+	control32(c, 3, 3, 1); // framing Capabilities
+	control16(c, 9, t, 1); // assigned tunnel
+	controlb(c, 11, (uint8_t *) auth, auth_len, 1);  // CHAP Challenge
+	LOG(1, 0, t, "Sent SCCRQ tunnel (REMOTE LNS)\n");
+	controladd(c, 0, t); // send
+}
+
+void lac_send_ICRQ(tunnelidt t, sessionidt s)
+{
+	// Sent ICRQ  Incoming-call-request
+	controlt *c = controlnew(10); // ICRQ
+
+	control16(c, 14, s, 1); // assigned sesion
+	call_serial_number++;
+	control32(c, 15, call_serial_number, 1);  // call serial number
+	LOG(1, s, t, "Sent ICRQ (REMOTE LNS) (tunnel far ID %u)\n", tunnel[t].far);
+	controladd(c, 0, t); // send
+}
+
+void lac_tunnelshutdown(tunnelidt t, char *reason, int result, int error, char *msg)
+{
+	tunnelshutdown(t, reason, result, error, msg);
+}
+
+#endif

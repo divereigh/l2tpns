@@ -1,5 +1,7 @@
 // L2TPNS PPP Stuff
 
+//#define LAC
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -11,6 +13,10 @@
 #include "util.h"
 #include "tbf.h"
 #include "cluster.h"
+
+#ifdef LAC
+#include "l2tplac.h"
+#endif
 
 extern tunnelt *tunnel;
 extern bundlet *bundle;
@@ -99,6 +105,14 @@ void processpap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		}
 		LOG(3, s, t, "PAP login %s/%s\n", user, pass);
 	}
+
+#ifdef LAC
+	if (forwardtolns(s, user))
+	{
+		LOG(3, s, t, "Forwarding login for %s to other LNS\n", user);
+		return;
+	}
+#endif
 
 	if (session[s].ip || !(r = radiusnew(s)))
 	{
@@ -250,6 +264,17 @@ void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 		packet.username = calloc(l + 1, 1);
 		memcpy(packet.username, p, l);
+
+#ifdef LAC
+		if (forwardtolns(s, packet.username))
+		{
+			LOG(3, s, t, "Forwarding login for %s to other LNS\n", packet.username);
+
+			free(packet.username);
+			free(packet.password);
+			return;
+		}
+#endif
 
 		run_plugins(PLUGIN_PRE_AUTH, &packet);
 		if (!packet.continue_auth)

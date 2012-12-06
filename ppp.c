@@ -1,7 +1,5 @@
 // L2TPNS PPP Stuff
 
-//#define LAC
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -107,9 +105,9 @@ void processpap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	}
 
 #ifdef LAC
-	if (forwardtolns(s, user))
+	if ((!config->disable_lac_func) && lac_conf_forwardtoremotelns(s, user))
 	{
-		LOG(3, s, t, "Forwarding login for %s to other LNS\n", user);
+		// Creating a tunnel/session has been started
 		return;
 	}
 #endif
@@ -266,12 +264,11 @@ void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		memcpy(packet.username, p, l);
 
 #ifdef LAC
-		if (forwardtolns(s, packet.username))
+		if ((!config->disable_lac_func) && lac_conf_forwardtoremotelns(s, packet.username))
 		{
-			LOG(3, s, t, "Forwarding login for %s to other LNS\n", packet.username);
-
 			free(packet.username);
 			free(packet.password);
+			// Creating a tunnel/session has been started
 			return;
 		}
 #endif

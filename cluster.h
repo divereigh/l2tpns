@@ -25,7 +25,11 @@
 #define C_CBUNDLE		18	// Compressed bundle structure.
 #define C_MPPP_FORWARD	19	// MPPP Forwarded packet..
 
+#ifdef LAC
+#define HB_VERSION		7	// Protocol version number..
+#else
 #define HB_VERSION		6	// Protocol version number..
+#endif
 #define HB_MAX_SEQ		(1<<30)	// Maximum sequence number. (MUST BE A POWER OF 2!)
 #define HB_HISTORY_SIZE		64	// How many old heartbeats we remember?? (Must be a factor of HB_MAX_SEQ)
 

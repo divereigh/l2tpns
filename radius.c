@@ -11,12 +11,17 @@
 #include <ctype.h>
 #include <netinet/in.h>
 #include <errno.h>
+
 #include "md5.h"
 #include "constants.h"
 #include "l2tpns.h"
 #include "plugin.h"
 #include "util.h"
 #include "cluster.h"
+
+#ifdef LAC
+#include "l2tplac.h"
+#endif
 
 extern radiust *radius;
 extern sessiont *session;
@@ -230,6 +235,7 @@ void radiussend(uint16_t r, uint8_t state)
 	}
 	b[1] = r >> RADIUS_SHIFT;       // identifier
 	memcpy(b + 4, radius[r].auth, 16);
+
 	p = b + 20;
 	if (s)
 	{
@@ -530,6 +536,9 @@ void processrad(uint8_t *buf, int len, char socket_index)
 	uint8_t routes = 0;
 	int r_code;
 	int r_id;
+#ifdef LAC
+	int OpentunnelReq = 0;
+#endif
 
 	CSTAT(processrad);
 
@@ -629,6 +638,11 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				// Extract IP, routes, etc
 				uint8_t *p = buf + 20;
 				uint8_t *e = buf + len;
+#ifdef LAC
+				uint8_t tag;
+				uint8_t strtemp[256];
+				lac_reset_rad_tag_tunnel_ctxt();
+#endif
 				for (; p + 2 <= e && p[1] && p + p[1] <= e; p += p[1])
 				{
 					if (*p == 26 && p[1] >= 7)
@@ -823,6 +837,96 @@ void processrad(uint8_t *buf, int len, char socket_index)
 							session[s].classlen = MAXCLASS;
 						memcpy(session[s].class, p + 2, session[s].classlen);
 					}
+#ifdef LAC
+					else if (*p == 64)
+					{
+						// Tunnel-Type
+						if (p[1] != 6) continue;
+						tag = p[2];
+						LOG(3, s, session[s].tunnel, "   Radius reply Tunnel-Type:%d %d\n",
+							tag, ntohl(*(uint32_t *)(p + 2)) & 0xFFFFFF);
+						// Fill context
+						lac_set_rad_tag_tunnel_type(tag, ntohl(*(uint32_t *)(p + 2)) & 0xFFFFFF);
+						/* Request open tunnel to remote LNS*/
+						OpentunnelReq = 1;
+					}
+					else if (*p == 65)
+					{
+						// Tunnel-Medium-Type
+						if (p[1] < 6) continue;
+						tag = p[2];
+						LOG(3, s, session[s].tunnel, "   Radius reply Tunnel-Medium-Type:%d %d\n",
+							tag, ntohl(*(uint32_t *)(p + 2)) & 0xFFFFFF);
+						// Fill context
+						lac_set_rad_tag_tunnel_medium_type(tag, ntohl(*(uint32_t *)(p + 2)) & 0xFFFFFF);
+					}
+					else if (*p == 67)
+					{
+						// Tunnel-Server-Endpoint
+						if (p[1] < 3) continue;
+						tag = p[2];
+						//If the Tag field is greater than 0x1F,
+						// it SHOULD be interpreted as the first byte of the following String field.
+						memset(strtemp, 0, 256);
+						if (tag > 0x1F)
+						{
+							tag = 0;
+							memcpy(strtemp, (p + 2), p[1]-2);
+						}
+						else
+							memcpy(strtemp, (p + 3), p[1]-3);
+
+						LOG(3, s, session[s].tunnel, "   Radius reply Tunnel-Server-Endpoint:%d %s\n", tag, strtemp);
+						// Fill context
+						lac_set_rad_tag_tunnel_serv_endpt(tag, (char *) strtemp);
+					}
+					else if (*p == 69)
+					{
+						// Tunnel-Password
+						size_t lentemp;
+
+						if (p[1] < 5) continue;
+						tag = p[2];
+
+						memset(strtemp, 0, 256);
+						lentemp = p[1]-3;
+						memcpy(strtemp, (p + 3), lentemp);
+						if (!rad_tunnel_pwdecode(strtemp, &lentemp, config->radiussecret, radius[r].auth))
+						{
+							LOG_HEX(3, "Error Decode Tunnel-Password, Dump Radius reponse:", p, p[1]);
+							continue;
+						}
+
+						LOG(3, s, session[s].tunnel, "   Radius reply Tunnel-Password:%d %s\n", tag, strtemp);
+						if (strlen((char *) strtemp) > 63)
+						{
+							LOG(1, s, session[s].tunnel, "tunnel password is too long (>63)\n");
+							continue;
+						}
+						// Fill context
+						lac_set_rad_tag_tunnel_password(tag, (char *) strtemp);
+					}
+					else if (*p == 82)
+					{
+						// Tunnel-Assignment-Id
+						if (p[1] < 3) continue;
+						tag = p[2];
+						//If the Tag field is greater than 0x1F,
+						// it SHOULD be interpreted as the first byte of the following String field.
+						memset(strtemp, 0, 256);
+						if (tag > 0x1F)
+						{
+							tag = 0;
+							memcpy(strtemp, (p + 2), p[1]-2);
+						}
+						else
+							memcpy(strtemp, (p + 3), p[1]-3);
+
+						LOG(3, s, session[s].tunnel, "   Radius reply Tunnel-Assignment-Id:%d %s\n", tag, strtemp);
+						// Fill context
+						lac_set_rad_tag_tunnel_assignment_id(tag, (char *) strtemp);
+					}
+#endif
 				}
 			}
 			else if (r_code == AccessReject)
@@ -832,6 +936,30 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				break;
 			}
 
+#ifdef LAC
+			if ((!config->disable_lac_func) && OpentunnelReq)
+			{
+				char assignment_id[256];
+				// Save radius tag context to conf
+				lac_save_rad_tag_tunnels(s);
+
+				memset(assignment_id, 0, 256);
+				if (!lac_rad_select_assignment_id(s, assignment_id))
+					break; // Error no assignment_id
+
+				if (lac_rad_forwardtoremotelns(s, assignment_id, session[s].user))
+				{
+					int ro;
+					// Sanity check, no local IP to session forwarded
+					session[s].ip = 0;
+					for (ro = 0; r < MAXROUTE && session[s].route[ro].ip; r++)
+					{
+						session[s].route[ro].ip = 0;
+					}
+					break;
+				}
+			}
+#endif
 			if (!session[s].dns1 && config->default_dns1)
 			{
 				session[s].dns1 = ntohl(config->default_dns1);
@@ -1174,3 +1302,96 @@ void processdae(uint8_t *buf, int len, struct sockaddr_in *addr, int alen, struc
 	if (sendtofrom(daefd, buf, len, MSG_DONTWAIT | MSG_NOSIGNAL, (struct sockaddr *) addr, alen, local) < 0)
 		LOG(0, 0, 0, "Error sending DAE response packet: %s\n", strerror(errno));
 }
+
+#ifdef LAC
+// Decrypte the encrypted Tunnel Password.
+// Defined in RFC-2868.
+// the pl2tpsecret buffer must set to 256 characters.
+// return 0 on decoding error else length of decoded l2tpsecret
+int rad_tunnel_pwdecode(uint8_t *pl2tpsecret, size_t *pl2tpsecretlen,
+						const char *radiussecret, const uint8_t * auth)
+{
+	MD5_CTX ctx, oldctx;
+	hasht hash;
+	int secretlen;
+	unsigned i, n, len, decodedlen;
+
+/* 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 6 7
+* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |     Salt      |     Salt      |   String ..........
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+*/
+
+	len = *pl2tpsecretlen;
+
+	if (len < 2)
+	{
+		LOG(1, 0, 0, "tunnel password is too short, We need at least a salt\n");
+		return 0;
+	}
+
+	if (len <= 3)
+	{
+		pl2tpsecret[0] = 0;
+		*pl2tpsecretlen = 0;
+		LOG(1, 0, 0, "tunnel passwd is empty !!!\n");
+		return 0;
+	}
+
+	len -= 2;	/* discount the salt */
+
+	//Use the secret to setup the decryption
+	secretlen = strlen(radiussecret);
+
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, (void *) radiussecret, secretlen);
+	oldctx = ctx;	/* save intermediate work */
+
+	// Set up the initial key:
+	//	b(1) = MD5(radiussecret + auth + salt)
+	MD5_Update(&ctx, (void *) auth, 16);
+	MD5_Update(&ctx, pl2tpsecret, 2);
+
+	decodedlen = 0;
+	for (n = 0; n < len; n += 16)
+	{
+		int base = 0;
+
+		if (n == 0)
+		{
+			MD5_Final(hash, &ctx);
+
+			ctx = oldctx;
+
+			 // the first octet, it's the 'data_len'
+			 // Check is correct
+			decodedlen = pl2tpsecret[2] ^ hash[0];
+			if (decodedlen >= len)
+			{
+				LOG(1, 0, 0, "tunnel password is too long !!!\n");
+				return 0;
+			}
+
+			MD5_Update(&ctx, pl2tpsecret + 2, 16);
+			base = 1;
+		} else
+		{
+			MD5_Final(hash, &ctx);
+
+			ctx = oldctx;
+			MD5_Update(&ctx, pl2tpsecret + n + 2, 16);
+		}
+
+		for (i = base; i < 16; i++)
+		{
+			pl2tpsecret[n + i - 1] = pl2tpsecret[n + i + 2] ^ hash[i];
+		}
+	}
+
+	if (decodedlen > 239) decodedlen = 239;
+
+	*pl2tpsecretlen = decodedlen;
+	pl2tpsecret[decodedlen] = 0;
+
+	return decodedlen;
+};
+#endif /* LAC */

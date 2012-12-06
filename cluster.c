@@ -1487,6 +1487,7 @@ static uint8_t *convert_session(struct oldsession *old)
 // Process a heartbeat..
 //
 // v6: added RADIUS class attribute, re-ordered session structure
+// v7: added tunnelt attribute at the end of struct (tunnelt size change)
 static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t *p, in_addr_t addr)
 {
 	heartt *h;
@@ -1494,11 +1495,18 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 	int i, type;
 	int hb_ver = more;
 
+#ifdef LAC
+#if HB_VERSION != 7
+# error "need to update cluster_process_heartbeat()"
+#endif
+#else
 #if HB_VERSION != 6
 # error "need to update cluster_process_heartbeat()"
 #endif
+#endif
 
-	// we handle versions 5 through 6
+
+	// we handle versions 5 through 7
 	if (hb_ver < 5 || hb_ver > HB_VERSION) {
 		LOG(0, 0, 0, "Received a heartbeat version that I don't support (%d)!\n", hb_ver);
 		return -1; // Ignore it??
@@ -1710,7 +1718,13 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 				size = rle_decompress((uint8_t **) &p, s, c, sizeof(c));
 				s -= (p - orig_p);
 
-				if (size != sizeof(tunnelt) ) { // Ouch! Very very bad!
+#ifdef LAC
+				if ( ((hb_ver >= HB_VERSION) && (size != sizeof(tunnelt))) ||
+					 ((hb_ver < HB_VERSION) && (size > sizeof(tunnelt))) )
+#else
+				if (size != sizeof(tunnelt) )
+#endif
+				{ // Ouch! Very very bad!
 					LOG(0, 0, 0, "DANGER: Received a CTUNNEL that didn't decompress correctly!\n");
 						// Now what? Should exit! No-longer up to date!
 					break;

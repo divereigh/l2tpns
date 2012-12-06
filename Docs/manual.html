@@ -368,7 +368,21 @@ Drop sessions who have not responded within idle_echo_timeout seconds
 (default: 240 (seconds))
 </LI>
 
+<LI><B>bind_portremotelns</B> (short)<BR>
+Port to bind for the Remote LNS (default: 65432).
+</LI>
+
 </UL>
+
+<P>The REMOTES LNS configuration is entered by the command:
+<DL> <DD><B>setforward</B> <I>MASK</I> <I>IP</I> <I>PORT</I> <I>SECRET</I> </DL>
+
+where <I>MASK</I> specifies the mask of users who have forwarded to
+remote LNS (ex: /myISP@company.com).</BR>
+where <I>IP</I> specifies the IP of the  remote LNS (ex: 66.66.66.55).</BR>
+where <I>PORT</I> specifies the L2TP Port of the remote LNS
+(Normally should be 1701) (ex: 1701).</BR>
+where <I>SECRET</I> specifies the secret password the remote LNS (ex: mysecret).</BR>
 
 <P>BGP routing configuration is entered by the command:
 The routing configuration section is entered by the command

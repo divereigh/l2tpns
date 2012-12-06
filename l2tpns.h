@@ -426,7 +426,7 @@ typedef struct
 #define SESSION_ACFC	(1 << 1)	// use Address-and-Control-Field-Compression
 #define SESSION_STARTED	(1 << 2)	// RADIUS Start record sent
 
-// 168 bytes per tunnel
+// 328 bytes per tunnel
 typedef struct
 {
 	tunnelidt far;		// far end tunnel ID
@@ -446,6 +446,12 @@ typedef struct
 	uint16_t controlc;	// outstaind messages in queue
 	controlt *controls;	// oldest message
 	controlt *controle;	// newest message
+#ifdef LAC
+	uint16_t isremotelns;	// != 0 if the tunnel is to remote LNS (== index on the conf remote lns)
+	char reserved[14];		// Space to expand structure without changing HB_VERSION
+#else
+	char reserved[16];		// Space to expand structure without changing HB_VERSION
+#endif
 }
 tunnelt;
 
@@ -756,7 +762,9 @@ typedef struct
 	int idle_echo_timeout; // Time between last packet seen and
 						   // Drop sessions who have not responded within IDLE_ECHO_TIMEOUT seconds
 #ifdef LAC
+	int disable_lac_func;
 	int highest_rlnsid;
+	uint16_t bind_portremotelns;
 #endif
 } configt;
 
@@ -891,7 +899,9 @@ void radiusretry(uint16_t r);
 uint16_t radiusnew(sessionidt s);
 void radiusclear(uint16_t r, sessionidt s);
 void processdae(uint8_t *buf, int len, struct sockaddr_in *addr, int alen, struct in_addr *local);
-
+#ifdef LAC
+int rad_tunnel_pwdecode(uint8_t *pl2tpsecret, size_t *pl2tpsecretlen, const char *radiussecret, const uint8_t * auth);
+#endif
 
 // l2tpns.c
 clockt backoff(uint8_t try);
@@ -985,6 +995,9 @@ struct event_data {
 		FD_TYPE_RADIUS,
 		FD_TYPE_BGP,
 		FD_TYPE_NETLINK,
+#ifdef LAC
+		FD_TYPE_UDPLAC,
+#endif
 	} type;
 	int index; // for RADIUS, BGP
 };

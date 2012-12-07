@@ -196,7 +196,8 @@ int lac_rad_select_assignment_id(sessionidt s, char *assignment_id)
 	if (nbtagfound > 0)
 	{
 		// random between 0 and nbtagfound-1
-		idtag = (nbtagfound*rand()/(RAND_MAX+1.0));
+		idtag = (rand() % nbtagfound);
+
 		if (idtag >= nbtagfound)
 			idtag = 0; //Sanity checks.
 
@@ -227,6 +228,7 @@ void lac_save_rad_tag_tunnels(sessionidt s)
 		else if (strlen(ptunnelrlns[idtag].tunnel_assignment_id) <= 0)
 			LOG(1, s, session[s].tunnel, "Error, No tunnel_assignment_id \n");
 		else
+		{
 			for (idrlns = 1; idrlns < MAXRLNSTUNNEL; ++idrlns)
 			{
 				if (pconfigrlns[idrlns].state == CONFRLNSFREE)
@@ -247,7 +249,6 @@ void lac_save_rad_tag_tunnels(sessionidt s)
 					if ( (pconfigrlns[idrlns].ip == ptunnelrlns[idtag].tunnel_server_endpoint) &&
 						 (strcmp(pconfigrlns[idrlns].tunnel_assignment_id, ptunnelrlns[idtag].tunnel_assignment_id) == 0) )
 					{
-						LOG(3, s, session[s].tunnel, "Tunnel IP %s already defined\n", fmtaddr(htonl(pconfigrlns[idrlns].ip), 0));
 						// l2tp_secret may be changed
 						strcpy(pconfigrlns[idrlns].l2tp_secret, ptunnelrlns[idtag].tunnel_password);
 						pconfigrlns[idrlns].port = L2TPPORT; //Default L2TP poart
@@ -259,10 +260,11 @@ void lac_save_rad_tag_tunnels(sessionidt s)
 				}
 			}
 
-		if (idrlns >= MAXRLNSTUNNEL)
-		{
-			LOG(0, s, session[s].tunnel, "No more Remote LNS Conf Free\n");
-			return;
+			if (idrlns >= MAXRLNSTUNNEL)
+			{
+				LOG(0, s, session[s].tunnel, "No more Remote LNS Conf Free\n");
+				return;
+			}
 		}
 	}
 }
@@ -569,8 +571,9 @@ int lac_cli_show_remotelns(confrlnsidt idrlns, char *strout)
 
 	if (idrlns == 0)
 		// Show Summary
-		sprintf(strout, "%15s %-32s %-32s %11s %7s %10s",
+		sprintf(strout, "%15s %3s  %-32s %-32s %11s %7s %10s",
 				"IP Remote LNS",
+				"TID",
 				"l2tp secret",
 				"assignment Id",
 				"File/Radius",
@@ -578,7 +581,7 @@ int lac_cli_show_remotelns(confrlnsidt idrlns, char *strout)
 				"Count Sess");
 	else
 	{
-		tunnelidt t;
+		tunnelidt t, tfound = 0;
 		sessionidt s;
 		int countsess = 0;
 		char state[20];
@@ -586,29 +589,27 @@ int lac_cli_show_remotelns(confrlnsidt idrlns, char *strout)
 		strcpy(state, "Close");
 		for (t = 0; t <= config->cluster_highest_tunnelid ; ++t)
 		{
-			if ((tunnel[t].isremotelns) &&
+			if ((tunnel[t].isremotelns == idrlns) &&
 				(tunnel[t].ip == pconfigrlns[idrlns].ip) &&
 				(tunnel[t].port == pconfigrlns[idrlns].port) &&
 				(tunnel[t].state != TUNNELDIE))
 			{
-				if (tunnel[t].isremotelns)
-				{
-					if (tunnel[t].state == TUNNELOPENING)
-						strcpy(state, "Opening");
-					else if (tunnel[t].state == TUNNELOPEN)
-						strcpy(state, "Open");
+				if (tunnel[t].state == TUNNELOPENING)
+					strcpy(state, "Opening");
+				else if (tunnel[t].state == TUNNELOPEN)
+					strcpy(state, "Open");
 
-					for (s = 1; s <= config->cluster_highest_sessionid ; ++s)
-						if (session[s].tunnel == t)
-							countsess++;
-
-					break;
-				}
+				for (s = 1; s <= config->cluster_highest_sessionid ; ++s)
+					if (session[s].tunnel == t)
+						countsess++;
+				tfound = t;
+				break;
 			}
 		}
 
-		sprintf(strout, "%15s %-32s %-32s %11s %7s %10u",
+		sprintf(strout, "%15s %3u  %-32s %-32s %11s %7s %10u",
 				fmtaddr(htonl(pconfigrlns[idrlns].ip), 0),
+				tfound,
 				pconfigrlns[idrlns].l2tp_secret,
 				pconfigrlns[idrlns].tunnel_assignment_id,
 				(pconfigrlns[idrlns].state == CONFRLNSSET?"File":(pconfigrlns[idrlns].state == CONFRLNSSETBYRADIUS?"Radius":"Free")),

@@ -947,6 +947,8 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				if (!lac_rad_select_assignment_id(s, assignment_id))
 					break; // Error no assignment_id
 
+				LOG(3, s, session[s].tunnel, "Select Tunnel Remote LNS for assignment_id == %s\n", assignment_id);
+
 				if (lac_rad_forwardtoremotelns(s, assignment_id, session[s].user))
 				{
 					int ro;
@@ -956,6 +958,10 @@ void processrad(uint8_t *buf, int len, char socket_index)
 					{
 						session[s].route[ro].ip = 0;
 					}
+
+					// Restart LCP auth...
+					lcp_restart(s);
+					sendlcp(s, t);
 					break;
 				}
 			}

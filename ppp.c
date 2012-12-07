@@ -425,7 +425,7 @@ void lcp_open(sessionidt s, tunnelidt t)
 	}
 }
 
-static void lcp_restart(sessionidt s)
+void lcp_restart(sessionidt s)
 {
 	session[s].ppp.phase = Establish;
 	// This-Layer-Down

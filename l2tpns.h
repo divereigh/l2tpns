@@ -874,6 +874,7 @@ void sendarp(int ifr_idx, const unsigned char* mac, in_addr_t ip);
 void processpap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void lcp_open(sessionidt s, tunnelidt t);
+void lcp_restart(sessionidt s);
 void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processipv6cp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);

@@ -227,6 +227,8 @@ void lac_save_rad_tag_tunnels(sessionidt s)
 			LOG(1, s, session[s].tunnel, "Error, Bad IP tunnel server endpoint \n");
 		else if (strlen(ptunnelrlns[idtag].tunnel_assignment_id) <= 0)
 			LOG(1, s, session[s].tunnel, "Error, No tunnel_assignment_id \n");
+		else if (ptunnelrlns[idtag].tunnel_server_endpoint == ntohl(config->bind_address))
+			LOG(0, s, session[s].tunnel, "Error, IP Remote LNS == IP local bind address (%s) !!!\n", fmtaddr(config->bind_address, 0));
 		else
 		{
 			for (idrlns = 1; idrlns < MAXRLNSTUNNEL; ++idrlns)

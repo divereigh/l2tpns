@@ -558,7 +558,7 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	if (session[s].die) // going down...
 		return;
 
-	LOG((*p == EchoReq || *p == EchoReply) ? 4 : 3, s, t,
+	LOG(((*p == EchoReq || *p == EchoReply) ? 4 : 3), s, t,
 		"LCP: recv %s\n", ppp_code(*p));
 
 	if (config->debug > 3) dumplcp(p, l);

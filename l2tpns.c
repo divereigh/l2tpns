@@ -178,8 +178,10 @@ config_descriptt config_values[] = {
 #endif
 	CONFIG("echo_timeout", echo_timeout, INT),
 	CONFIG("idle_echo_timeout", idle_echo_timeout, INT),
+	CONFIG("iftun_address", iftun_address, IPv4),
 #ifdef LAC
 	CONFIG("disable_lac_func", disable_lac_func, BOOL),
+	CONFIG("bind_address_remotelns", bind_address_remotelns, IPv4),
 	CONFIG("bind_portremotelns", bind_portremotelns, SHORT),
 #endif
 	{ NULL, 0, 0, 0 },
@@ -292,7 +294,7 @@ void _log(int level, sessionidt s, tunnelidt t, const char *format, ...)
 		ringbuffer->buffer[ringbuffer->tail].session = s;
 		ringbuffer->buffer[ringbuffer->tail].tunnel = t;
 		va_start(ap, format);
-		vsnprintf(ringbuffer->buffer[ringbuffer->tail].message, 4095, format, ap);
+		vsnprintf(ringbuffer->buffer[ringbuffer->tail].message, MAX_LOG_LENGTH, format, ap);
 		va_end(ap);
 	}
 #endif
@@ -747,8 +749,8 @@ static void inittun(void)
 		req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
 		req.ifmsg.ifaddr.ifa_index = tunidx;
 
-		if (config->bind_address)
-			ip = config->bind_address;
+		if (config->iftun_address)
+			ip = config->iftun_address;
 		else
 			ip = 0x01010101; // 1.1.1.1
 		netlink_addattr(&req.nh, IFA_LOCAL, &ip, sizeof(ip));
@@ -878,6 +880,7 @@ static void initudp(void)
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(config->bind_portremotelns);
+	addr.sin_addr.s_addr = config->bind_address_remotelns;
 	udplacfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	setsockopt(udplacfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	{
@@ -2177,7 +2180,7 @@ void sendipcp(sessionidt s, tunnelidt t)
 	q[4] = 3;				// ip address option
 	q[5] = 6;				// option length
 	*(in_addr_t *) (q + 6) = config->peer_address ? config->peer_address :
-				 config->bind_address ? config->bind_address :
+				 config->iftun_address ? config->iftun_address :
 				 my_address; // send my IP
 
 	tunnelsend(buf, 10 + (q - buf), t); // send it
@@ -3062,6 +3065,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 					tunnelshutdown(t, "Stopped", 0, 0, 0); // Shut down cleanly
 					break;
 				case 6:       // HELLO
+					LOG(3, s, t, "Received HELLO\n");
 					controlnull(t); // simply ACK
 					break;
 				case 7:       // OCRQ
@@ -3157,7 +3161,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 
 					// Set multilink options before sending initial LCP packet
 					sess_local[s].mp_mrru = 1614;
-					sess_local[s].mp_epdis = ntohl(config->bind_address ? config->bind_address : my_address);
+					sess_local[s].mp_epdis = ntohl(config->iftun_address ? config->iftun_address : my_address);
 
 					sendlcp(s, t);
 					change_state(s, lcp, RequestSent);
@@ -4196,7 +4200,7 @@ static void mainloop(void)
 					if ((s = read(tunfd, p, size_bufp)) > 0)
 					{
 						processtun(p, s);
-					    	tun_pkts++;
+						tun_pkts++;
 					}
 					else
 					{
@@ -4228,7 +4232,7 @@ static void mainloop(void)
 			if (c >= config->multi_read_count)
 			{
 #ifdef LAC
-				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun and %d cluster %d rmlns packets\n",
+				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d cluster and %d rmlns packets\n",
 					config->multi_read_count, udp_pkts, tun_pkts, cluster_pkts, udplac_pkts);
 #else
 				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun and %d cluster packets\n",
@@ -4887,7 +4891,7 @@ static int dump_session(FILE **f, sessiont *s)
 			"# uptime: %ld\n"
 			"# format: username ip qos uptxoctets downrxoctets\n",
 			hostname,
-			fmtaddr(config->bind_address ? config->bind_address : my_address, 0),
+			fmtaddr(config->iftun_address ? config->iftun_address : my_address, 0),
 			now,
 			now - basetime);
 	}
@@ -5271,7 +5275,11 @@ static void update_config()
 #ifdef LAC
 	if(!config->bind_portremotelns)
 		config->bind_portremotelns = L2TPLACPORT;
+	if(!config->bind_address_remotelns)
+		config->bind_address_remotelns = INADDR_ANY;
 #endif
+	if(!config->iftun_address)
+		config->iftun_address = config->bind_address;
 
 	// re-initialise the random number source
 	initrandom(config->random_device);

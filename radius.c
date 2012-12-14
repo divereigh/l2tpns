@@ -600,6 +600,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 			run_plugins(PLUGIN_POST_AUTH, &packet);
 			r_code = packet.auth_allowed ? AccessAccept : AccessReject;
 
+#ifndef LAC
 			// process auth response
 			if (radius[r].chap)
 			{
@@ -631,6 +632,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				LOG(3, s, session[s].tunnel, "   PAP User %s authentication %s.\n", session[s].user,
 						(r_code == AccessAccept) ? "allowed" : "denied");
 			}
+#endif
 
 			if (r_code == AccessAccept)
 			{
@@ -958,14 +960,43 @@ void processrad(uint8_t *buf, int len, char socket_index)
 					{
 						session[s].route[ro].ip = 0;
 					}
-
-					// Restart LCP auth...
-					lcp_restart(s);
-					sendlcp(s, t);
 					break;
 				}
 			}
+
+			// process auth response
+			if (radius[r].chap)
+			{
+				// CHAP
+				uint8_t *p = makeppp(b, sizeof(b), 0, 0, s, t, PPPCHAP, 0, 0, 0);
+				if (!p) return;	// Abort!
+
+				*p = (r_code == AccessAccept) ? 3 : 4;     // ack/nak
+				p[1] = radius[r].id;
+				*(uint16_t *) (p + 2) = ntohs(4); // no message
+				tunnelsend(b, (p - b) + 4, t); // send it
+
+				LOG(3, s, session[s].tunnel, "   CHAP User %s authentication %s.\n", session[s].user,
+						(r_code == AccessAccept) ? "allowed" : "denied");
+			}
+			else
+			{
+				// PAP
+				uint8_t *p = makeppp(b, sizeof(b), 0, 0, s, t, PPPPAP, 0, 0, 0);
+				if (!p) return;		// Abort!
+
+				// ack/nak
+				*p = r_code;
+				p[1] = radius[r].id;
+				*(uint16_t *) (p + 2) = ntohs(5);
+				p[4] = 0; // no message
+				tunnelsend(b, (p - b) + 5, t); // send it
+
+				LOG(3, s, session[s].tunnel, "   PAP User %s authentication %s.\n", session[s].user,
+						(r_code == AccessAccept) ? "allowed" : "denied");
+			}
 #endif
+
 			if (!session[s].dns1 && config->default_dns1)
 			{
 				session[s].dns1 = ntohl(config->default_dns1);

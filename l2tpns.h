@@ -761,10 +761,12 @@ typedef struct
 	int echo_timeout; // Time between last packet sent and LCP ECHO generation
 	int idle_echo_timeout; // Time between last packet seen and
 						   // Drop sessions who have not responded within IDLE_ECHO_TIMEOUT seconds
+	in_addr_t iftun_address;
 #ifdef LAC
 	int disable_lac_func;
 	int highest_rlnsid;
 	uint16_t bind_portremotelns;
+	in_addr_t bind_address_remotelns;
 #endif
 } configt;
 

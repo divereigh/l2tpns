@@ -236,7 +236,7 @@ void lac_save_rad_tag_tunnels(sessionidt s)
 				if (pconfigrlns[idrlns].state == CONFRLNSFREE)
 				{
 					pconfigrlns[idrlns].ip = ptunnelrlns[idtag].tunnel_server_endpoint;
-					pconfigrlns[idrlns].port = L2TPPORT; //Default L2TP poart
+					pconfigrlns[idrlns].port = L2TPPORT; //Default L2TP port
 					strcpy(pconfigrlns[idrlns].l2tp_secret, ptunnelrlns[idtag].tunnel_password);
 					strcpy(pconfigrlns[idrlns].tunnel_assignment_id, ptunnelrlns[idtag].tunnel_assignment_id);
 

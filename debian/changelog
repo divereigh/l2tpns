@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn2.2) unstable; urgency=low
+
+  * Add LAC functionality
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Sat, 15 Dec 2012 01:10:32 +0100
+
 l2tpns (2.2.1-2fdn2.1) unstable; urgency=low
 
   * Fix the inverted "delete/add" of the routes, in cluster mode. 

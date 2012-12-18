@@ -1014,7 +1014,11 @@ int cluster_listinvert_session(int sidnew, int sidtodel)
 
 		if ( cluster_changes[i].id == sidnew && cluster_changes[i].type == C_CSESSION)
 		{
-			inew = i;
+			if (session[i].tunnel != T_FREE)
+				inew = i;
+			else
+				return 0;	// This a free session no invert.
+
 			break;
 		}
 	}

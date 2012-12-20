@@ -8,6 +8,7 @@
 #include "md5.h"
 #include "l2tpns.h"
 #include "util.h"
+#include "cluster.h"
 
 #include "l2tplac.h"
 
@@ -444,7 +445,7 @@ void lac_calc_rlns_auth(tunnelidt t, uint8_t id, uint8_t *out)
 }
 
 // Forward session to LAC or Remote LNS
-int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto)
+int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, in_addr_t s_addr, int sin_port)
 {
 	uint16_t t = 0, s = 0;
 	uint8_t *p = buf + 2; // First word L2TP options
@@ -467,6 +468,19 @@ int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto)
 	{
 		LOG(0, sess, session[sess].tunnel, "Link Tunnel Session (%u) broken\n", s);
 		return 0;
+	}
+
+	if (!config->cluster_iam_master)
+	{
+		if ( (proto == PPPIPCP) || (proto == PPPLCP) ||
+			 (proto == PPPPAP) || (proto == PPPCHAP) ||
+			 (proto == PPPIPV6CP && config->ipv6_prefix.s6_addr[0]) ||
+			 (proto == PPPCCP) )
+		{
+			session[sess].last_packet = time_now;
+			master_forward_packet(buf, len, s_addr, sin_port);
+			return 1;
+		}
 	}
 
 	if (*buf & 0x40)

@@ -129,7 +129,7 @@ radius.o: radius.c md5.h constants.h l2tpns.h plugin.h util.h cluster.h \
 tbf.o: tbf.c l2tpns.h util.h tbf.h
 util.o: util.c l2tpns.h bgp.h
 bgp.o: bgp.c l2tpns.h bgp.h util.h
-l2tplac.o: l2tplac.c md5.h l2tpns.h util.h l2tplac.h
+l2tplac.o: l2tplac.c md5.h l2tpns.h util.h cluster.h l2tplac.h
 autosnoop.so: autosnoop.c l2tpns.h plugin.h
 autothrottle.so: autothrottle.c l2tpns.h plugin.h
 garden.so: garden.c l2tpns.h plugin.h control.h

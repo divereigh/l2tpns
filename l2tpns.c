@@ -258,7 +258,8 @@ static clockt now(double *f)
 	}
 
 	// Time in milliseconds
-	time_now_ms = (t.tv_sec * 1000) + (t.tv_usec/1000);
+	// TODO FOR MLPPP DEV
+	//time_now_ms = (t.tv_sec * 1000) + (t.tv_usec/1000);
 
 	return (t.tv_sec - basetime) * 10 + t.tv_usec / 100000 + 1;
 }
@@ -3224,7 +3225,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 		{
 			LOG(5, s, t, "Forwarding data session to session %u\n", session[s].forwardtosession);
 			// Forward to LAC or Remote LNS session
-			lac_session_forward(buf, len, s, proto);
+			lac_session_forward(buf, len, s, proto, addr->sin_addr.s_addr, addr->sin_port);
 			return;
 		}
 #endif /* LAC */

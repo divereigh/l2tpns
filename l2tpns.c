@@ -179,6 +179,7 @@ config_descriptt config_values[] = {
 	CONFIG("echo_timeout", echo_timeout, INT),
 	CONFIG("idle_echo_timeout", idle_echo_timeout, INT),
 	CONFIG("iftun_address", iftun_address, IPv4),
+	CONFIG("tundevicename", tundevicename, STRING),
 #ifdef LAC
 	CONFIG("disable_lac_func", disable_lac_func, BOOL),
 	CONFIG("bind_address_remotelns", bind_address_remotelns, IPv4),
@@ -690,15 +691,19 @@ static void inittun(void)
 		int flags = fcntl(tunfd, F_GETFL, 0);
 		fcntl(tunfd, F_SETFL, flags | O_NONBLOCK);
 	}
+
+   if (*config->tundevicename)
+         strncpy(ifr.ifr_name, config->tundevicename, IFNAMSIZ);
+
 	if (ioctl(tunfd, TUNSETIFF, (void *) &ifr) < 0)
 	{
 		LOG(0, 0, 0, "Can't set tun interface: %s\n", strerror(errno));
 		exit(1);
 	}
-	assert(strlen(ifr.ifr_name) < sizeof(config->tundevice) - 1);
-	strncpy(config->tundevice, ifr.ifr_name, sizeof(config->tundevice));
+	assert(strlen(ifr.ifr_name) < sizeof(config->tundevicename) - 1);
+	strncpy(config->tundevicename, ifr.ifr_name, sizeof(config->tundevicename));
 
-	tunidx = if_nametoindex(config->tundevice);
+	tunidx = if_nametoindex(config->tundevicename);
 	if (tunidx == 0)
 	{
 		LOG(0, 0, 0, "Can't get tun interface index\n");
@@ -5039,7 +5044,7 @@ int main(int argc, char *argv[])
 		exit(1);
 
 	inittun();
-	LOG(1, 0, 0, "Set up on interface %s\n", config->tundevice);
+	LOG(1, 0, 0, "Set up on interface %s\n", config->tundevicename);
 
 	initudp();
 	initrad();

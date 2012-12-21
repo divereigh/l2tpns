@@ -658,7 +658,7 @@ typedef struct
 	int		reload_config;			// flag to re-read config (set by cli)
 	int		multi_read_count;		// amount of packets to read per fd in processing loop
 
-	char		tundevice[IFNAMSIZ];		// tun device name
+	char		tundevicename[IFNAMSIZ];		// tun device name
 	char		log_filename[128];
 
 	char		l2tp_secret[64];		// L2TP shared secret

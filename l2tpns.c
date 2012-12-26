@@ -182,6 +182,7 @@ config_descriptt config_values[] = {
 	CONFIG("tundevicename", tundevicename, STRING),
 #ifdef LAC
 	CONFIG("disable_lac_func", disable_lac_func, BOOL),
+	CONFIG("auth_tunnel_change_addr_src", auth_tunnel_change_addr_src, BOOL),
 	CONFIG("bind_address_remotelns", bind_address_remotelns, IPv4),
 	CONFIG("bind_portremotelns", bind_portremotelns, SHORT),
 #endif
@@ -3229,9 +3230,21 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 		if (session[s].forwardtosession)
 		{
 			LOG(5, s, t, "Forwarding data session to session %u\n", session[s].forwardtosession);
-			// Forward to LAC or Remote LNS session
+			// Forward to LAC/BAS or Remote LNS session
 			lac_session_forward(buf, len, s, proto, addr->sin_addr.s_addr, addr->sin_port);
 			return;
+		}
+		else if (config->auth_tunnel_change_addr_src)
+		{
+			if (tunnel[t].ip != ntohl(addr->sin_addr.s_addr) &&
+				tunnel[t].port == ntohs(addr->sin_port))
+			{
+				// The remotes BAS are a clustered l2tpns server and the source IP has changed
+				LOG(5, s, t, "The tunnel IP source (%s) has changed by new IP (%s)\n",
+					fmtaddr(htonl(tunnel[t].ip), 0), fmtaddr(addr->sin_addr.s_addr, 0));
+
+				tunnel[t].ip = ntohl(addr->sin_addr.s_addr);
+			}
 		}
 #endif /* LAC */
 

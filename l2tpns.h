@@ -764,6 +764,7 @@ typedef struct
 	in_addr_t iftun_address;
 #ifdef LAC
 	int disable_lac_func;
+	int auth_tunnel_change_addr_src;
 	int highest_rlnsid;
 	uint16_t bind_portremotelns;
 	in_addr_t bind_address_remotelns;

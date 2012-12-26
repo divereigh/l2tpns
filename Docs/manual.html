@@ -265,6 +265,10 @@ from the address of "bind_address" (For use in cases of specific configuration).
 If no address is given to iftun_address and bind_address, 1.1.1.1 is used.
 </LI>
 
+<LI><B>tundevicename</B> (string)<BR>
+Name of the tun interface (default: "tun0").
+</LI>
+
 <LI><B>peer_address</B> (ip address)<BR>
 Address to send to clients as the default gateway.
 </LI>
@@ -382,6 +386,14 @@ If no address is given, all interfaces are listened (Any Address).
 
 <LI><B>bind_portremotelns</B> (short)<BR>
 Port to bind for the Remote LNS (default: 65432).
+</LI>
+
+<LI><B>auth_tunnel_change_addr_src</B> (boolean)<BR>
+This parameter authorize to change the source IP of the tunnels l2tp.
+This parameter can be used when the remotes BAS/LAC are l2tpns server
+configured in cluster mode, but that the interface to remote LNS are
+not clustered (the tunnel can be coming from different source IP)
+(default: no).
 </LI>
 
 </UL>

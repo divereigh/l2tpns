@@ -97,9 +97,9 @@ static void init_pppoe_disc(void)
 		exit(1);
 	}
 
-	assert(strlen(ifr.ifr_name) < sizeof(config->pppoe_if_name) - 1);
-	if (*config->pppoe_if_name)
-		strncpy(ifr.ifr_name, config->pppoe_if_name, IFNAMSIZ);
+	assert(strlen(ifr.ifr_name) < sizeof(config->pppoe_if_to_bind) - 1);
+	if (*config->pppoe_if_to_bind)
+		strncpy(ifr.ifr_name, config->pppoe_if_to_bind, IFNAMSIZ);
 
 	if (ioctl(pppoediscfd, SIOCGIFHWADDR, &ifr))
 	{
@@ -109,7 +109,7 @@ static void init_pppoe_disc(void)
 
 	if ((ifr.ifr_hwaddr.sa_data[0] & 1) != 0)
 	{
-		LOG(0, 0, 0, "Error pppoe: interface %s has not unicast address\n", config->pppoe_if_name);
+		LOG(0, 0, 0, "Error pppoe: interface %s has not unicast address\n", config->pppoe_if_to_bind);
 		exit(1);
 	}
 
@@ -122,7 +122,7 @@ static void init_pppoe_disc(void)
 	}
 
 	if (ifr.ifr_mtu < ETH_DATA_LEN)
-		LOG(0, 0, 0, "Error pppoe: interface %s has MTU of %i, should be %i\n", config->pppoe_if_name, ifr.ifr_mtu, ETH_DATA_LEN);
+		LOG(0, 0, 0, "Error pppoe: interface %s has MTU of %i, should be %i\n", config->pppoe_if_to_bind, ifr.ifr_mtu, ETH_DATA_LEN);
 
 	if (ioctl(pppoediscfd, SIOCGIFINDEX, &ifr))
 	{
@@ -174,9 +174,9 @@ static void init_pppoe_sess(void)
 		exit(1);
 	}
 
-	assert(strlen(ifr.ifr_name) < sizeof(config->pppoe_if_name) - 1);
-	if (*config->pppoe_if_name)
-		strncpy(ifr.ifr_name, config->pppoe_if_name, IFNAMSIZ);
+	assert(strlen(ifr.ifr_name) < sizeof(config->pppoe_if_to_bind) - 1);
+	if (*config->pppoe_if_to_bind)
+		strncpy(ifr.ifr_name, config->pppoe_if_to_bind, IFNAMSIZ);
 
 	if (ioctl(pppoesessfd, SIOCGIFHWADDR, &ifr))
 	{
@@ -186,7 +186,7 @@ static void init_pppoe_sess(void)
 
 	if ((ifr.ifr_hwaddr.sa_data[0] & 1) != 0)
 	{
-		LOG(0, 0, 0, "Error pppoe: interface %s has not unicast address\n", config->pppoe_if_name);
+		LOG(0, 0, 0, "Error pppoe: interface %s has not unicast address\n", config->pppoe_if_to_bind);
 		exit(1);
 	}
 
@@ -199,7 +199,7 @@ static void init_pppoe_sess(void)
 	}
 
 	if (ifr.ifr_mtu < ETH_DATA_LEN)
-		LOG(0, 0, 0, "Error pppoe: interface %s has MTU of %i, should be %i\n", config->pppoe_if_name, ifr.ifr_mtu, ETH_DATA_LEN);
+		LOG(0, 0, 0, "Error pppoe: interface %s has MTU of %i, should be %i\n", config->pppoe_if_to_bind, ifr.ifr_mtu, ETH_DATA_LEN);
 
 	if (ioctl(pppoesessfd, SIOCGIFINDEX, &ifr))
 	{
@@ -1115,7 +1115,7 @@ void pppoe_send_garp()
 	struct ifreq ifr;
 	uint8_t mac[6];
 
-	if (!*config->pppoe_if_name)
+	if (!*config->pppoe_if_to_bind)
 		return;
 
 	s = socket(PF_INET, SOCK_DGRAM, 0);
@@ -1125,7 +1125,7 @@ void pppoe_send_garp()
 		return;
 	}
 	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, config->pppoe_if_name, sizeof(ifr.ifr_name) - 1);
+	strncpy(ifr.ifr_name, config->pppoe_if_to_bind, sizeof(ifr.ifr_name) - 1);
 	if (ioctl(s, SIOCGIFHWADDR, &ifr) < 0)
 	{
 		LOG(0, 0, 0, "Error getting eth0 hardware address for GARP: %s\n", strerror(errno));

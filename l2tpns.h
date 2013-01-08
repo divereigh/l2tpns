@@ -775,7 +775,7 @@ typedef struct
 	uint16_t bind_portremotelns;
 	in_addr_t bind_address_remotelns;
 #endif
-	char pppoe_if_name[IFNAMSIZ];	// Name pppoe interface to bind
+	char pppoe_if_to_bind[IFNAMSIZ];	// Name pppoe interface to bind
 	char pppoe_service_name[64];	// pppoe service name
 	char pppoe_ac_name[64];
 	uint8_t pppoe_hwaddr[ETH_ALEN];	// MAC addr of interface pppoe to bind

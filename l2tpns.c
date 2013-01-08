@@ -187,7 +187,7 @@ config_descriptt config_values[] = {
 	CONFIG("bind_address_remotelns", bind_address_remotelns, IPv4),
 	CONFIG("bind_portremotelns", bind_portremotelns, SHORT),
 #endif
-	CONFIG("pppoe_if_name", pppoe_if_name, STRING),
+	CONFIG("pppoe_if_to_bind", pppoe_if_to_bind, STRING),
 	CONFIG("pppoe_service_name", pppoe_service_name, STRING),
 	CONFIG("pppoe_ac_name", pppoe_ac_name, STRING),
 	{ NULL, 0, 0, 0 },
@@ -5121,10 +5121,10 @@ int main(int argc, char *argv[])
 	inittun();
 	LOG(1, 0, 0, "Set up on interface %s\n", config->tundevicename);
 
-	if (*config->pppoe_if_name)
+	if (*config->pppoe_if_to_bind)
 	{
 		init_pppoe();
-		LOG(1, 0, 0, "Set up on pppoe interface %s\n", config->pppoe_if_name);
+		LOG(1, 0, 0, "Set up on pppoe interface %s\n", config->pppoe_if_to_bind);
 	}
 	initudp();
 	initrad();

@@ -56,6 +56,7 @@
 #ifdef LAC
 #include "l2tplac.h"
 #endif
+#include "pppoe.h"
 
 #ifdef LAC
 char * Vendor_name = "Linux L2TPNS";
@@ -186,6 +187,9 @@ config_descriptt config_values[] = {
 	CONFIG("bind_address_remotelns", bind_address_remotelns, IPv4),
 	CONFIG("bind_portremotelns", bind_portremotelns, SHORT),
 #endif
+	CONFIG("pppoe_if_name", pppoe_if_name, STRING),
+	CONFIG("pppoe_service_name", pppoe_service_name, STRING),
+	CONFIG("pppoe_ac_name", pppoe_ac_name, STRING),
 	{ NULL, 0, 0, 0 },
 };
 
@@ -1195,6 +1199,12 @@ void tunnelsend(uint8_t * buf, uint16_t l, tunnelidt t)
 		return;
 	}
 
+	if (t == TUNNEL_ID_PPPOE)
+	{
+		pppoe_sess_send(buf, l, t);
+		return;
+	}
+
 	if (!tunnel[t].ip)
 	{
 		LOG(1, 0, t, "Error sending data out tunnel: no remote endpoint (tunnel not set up)\n");
@@ -2134,20 +2144,28 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		throttle_session(s, 0, 0);
 
 	if (cdn_result)
-	{                            // Send CDN
-		controlt *c = controlnew(14); // sending CDN
-		if (cdn_error)
+	{
+		if (session[s].tunnel == TUNNEL_ID_PPPOE)
 		{
-			uint16_t buf[2];
-			buf[0] = htons(cdn_result);
-			buf[1] = htons(cdn_error);
-			controlb(c, 1, (uint8_t *)buf, 4, 1);
+			pppoe_shutdown_session(s);
 		}
 		else
-			control16(c, 1, cdn_result, 1);
+		{
+			// Send CDN
+			controlt *c = controlnew(14); // sending CDN
+			if (cdn_error)
+			{
+				uint16_t buf[2];
+				buf[0] = htons(cdn_result);
+				buf[1] = htons(cdn_error);
+				controlb(c, 1, (uint8_t *)buf, 4, 1);
+			}
+			else
+				control16(c, 1, cdn_result, 1);
 
-		control16(c, 14, s, 1);   // assigned session (our end)
-		controladd(c, session[s].far, session[s].tunnel); // send the message
+			control16(c, 14, s, 1);   // assigned session (our end)
+			controladd(c, session[s].far, session[s].tunnel); // send the message
+		}
 	}
 
 	// update filter refcounts
@@ -2411,6 +2429,12 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 	if (t >= MAXTUNNEL)
 	{
 		LOG(1, s, t, "Received UDP packet with invalid tunnel ID\n");
+		STAT(tunnel_rx_errors);
+		return;
+	}
+	if (t == TUNNEL_ID_PPPOE)
+	{
+		LOG(1, s, t, "Received UDP packet with tunnel ID reserved for pppoe\n");
 		STAT(tunnel_rx_errors);
 		return;
 	}
@@ -3441,6 +3465,9 @@ static void regular_cleanups(double period)
 		if (t > config->cluster_highest_tunnelid)
 			t = 1;
 
+		if (t == TUNNEL_ID_PPPOE)
+			continue;
+
 		// check for expired tunnels
 		if (tunnel[t].die && tunnel[t].die <= TIME)
 		{
@@ -3664,7 +3691,8 @@ static void regular_cleanups(double period)
 
 			LOG(4, s, session[s].tunnel, "No data in %d seconds, sending LCP ECHO\n",
 					(int)(time_now - session[s].last_packet));
-			tunnelsend(b, 24, session[s].tunnel); // send it
+
+			tunnelsend(b, (q - b) + 8, session[s].tunnel); // send it
 			sess_local[s].last_echo = time_now;
 			s_actions++;
 		}
@@ -3916,11 +3944,11 @@ static int still_busy(void)
 #endif
 
 #ifdef LAC
-// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink, udplac
-#define BASE_FDS	8
+// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink, udplac, pppoedisc, pppoesess
+#define BASE_FDS	10
 #else
-// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink
-#define BASE_FDS	7
+// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink, pppoedisc, pppoesess
+#define BASE_FDS	9
 #endif
 
 // additional polled fds
@@ -3935,8 +3963,9 @@ static void mainloop(void)
 {
 	int i;
 	uint8_t buf[65536];
-	uint8_t *p = buf + 8; // for the hearder of the forwarded MPPP packet (see C_MPPP_FORWARD)
-	int size_bufp = sizeof(buf) - 8;
+	uint8_t *p = buf + 24; // for the hearder of the forwarded MPPP packet (see C_MPPP_FORWARD)
+						// and the forwarded pppoe session
+	int size_bufp = sizeof(buf) - 24;
 	clockt next_cluster_ping = 0;	// send initial ping immediately
 	struct epoll_event events[BASE_FDS + RADIUS_FDS + EXTRA_FDS];
 	int maxevent = sizeof(events)/sizeof(*events);
@@ -3948,11 +3977,11 @@ static void mainloop(void)
 	}
 
 #ifdef LAC
-	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d , udplacfd=%d\n",
-		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd, udplacfd);
+	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d , udplacfd=%d, pppoefd=%d, pppoesessfd=%d\n",
+		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd, udplacfd, pppoediscfd, pppoesessfd);
 #else
-	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d\n",
-		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd);
+	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d, pppoefd=%d, pppoesessfd=%d\n",
+		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd, pppoediscfd, pppoesessfd);
 #endif
 
 	/* setup our fds to poll for input */
@@ -3999,6 +4028,14 @@ static void mainloop(void)
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, udplacfd, &e);
 #endif
+
+		d[i].type = FD_TYPE_PPPOEDISC;
+		e.data.ptr = &d[i++];
+		epoll_ctl(epollfd, EPOLL_CTL_ADD, pppoediscfd, &e);
+
+		d[i].type = FD_TYPE_PPPOESESS;
+		e.data.ptr = &d[i++];
+		epoll_ctl(epollfd, EPOLL_CTL_ADD, pppoesessfd, &e);
 	}
 
 #ifdef BGP
@@ -4065,6 +4102,8 @@ static void mainloop(void)
 			int udplac_ready = 0;
 			int udplac_pkts = 0;
 #endif
+			int pppoesess_ready = 0;
+			int pppoesess_pkts = 0;
 			int tun_ready = 0;
 			int cluster_ready = 0;
 			int udp_pkts = 0;
@@ -4105,6 +4144,14 @@ static void mainloop(void)
 #ifdef LAC
 				case FD_TYPE_UDPLAC:	udplac_ready++; break;
 #endif
+				case FD_TYPE_PPPOESESS:	pppoesess_ready++; break;
+
+				case FD_TYPE_PPPOEDISC: // pppoe discovery
+					s = read(pppoediscfd, p, size_bufp);
+					if (s > 0) process_pppoe_disc(p, s);
+					n--;
+					break;
+
 				case FD_TYPE_CONTROL: // nsctl commands
 					alen = sizeof(addr);
 					s = recvfromto(controlfd, buf, sizeof(buf), MSG_WAITALL, (struct sockaddr *) &addr, &alen, &local);
@@ -4183,9 +4230,9 @@ static void mainloop(void)
 				if (udp_ready)
 				{
 					alen = sizeof(addr);
-					if ((s = recvfrom(udpfd, buf, sizeof(buf), 0, (void *) &addr, &alen)) > 0)
+					if ((s = recvfrom(udpfd, p, size_bufp, 0, (void *) &addr, &alen)) > 0)
 					{
-						processudp(buf, s, &addr);
+						processudp(p, s, &addr);
 						udp_pkts++;
 					}
 					else
@@ -4199,10 +4246,10 @@ static void mainloop(void)
 				if (udplac_ready)
 				{
 					alen = sizeof(addr);
-					if ((s = recvfrom(udplacfd, buf, sizeof(buf), 0, (void *) &addr, &alen)) > 0)
+					if ((s = recvfrom(udplacfd, p, size_bufp, 0, (void *) &addr, &alen)) > 0)
 					{
 						if (!config->disable_lac_func)
-							processudp(buf, s, &addr);
+							processudp(p, s, &addr);
 
 						udplac_pkts++;
 					}
@@ -4228,13 +4275,28 @@ static void mainloop(void)
 					}
 				}
 
+				// pppoe session
+				if (pppoesess_ready)
+				{
+					if ((s = read(pppoesessfd, p, size_bufp)) > 0)
+					{
+						process_pppoe_sess(p, s);
+						pppoesess_pkts++;
+					}
+					else
+					{
+						pppoesess_ready = 0;
+						n--;
+					}
+				}
+
 				// cluster
 				if (cluster_ready)
 				{
 					alen = sizeof(addr);
-					if ((s = recvfrom(cluster_sockfd, buf, sizeof(buf), MSG_WAITALL, (void *) &addr, &alen)) > 0)
+					if ((s = recvfrom(cluster_sockfd, p, size_bufp, MSG_WAITALL, (void *) &addr, &alen)) > 0)
 					{
-						processcluster(buf, s, addr.sin_addr.s_addr);
+						processcluster(p, s, addr.sin_addr.s_addr);
 						cluster_pkts++;
 					}
 					else
@@ -5059,6 +5121,11 @@ int main(int argc, char *argv[])
 	inittun();
 	LOG(1, 0, 0, "Set up on interface %s\n", config->tundevicename);
 
+	if (*config->pppoe_if_name)
+	{
+		init_pppoe();
+		LOG(1, 0, 0, "Set up on pppoe interface %s\n", config->pppoe_if_name);
+	}
 	initudp();
 	initrad();
 	initippool();
@@ -5299,6 +5366,9 @@ static void update_config()
 #endif
 	if(!config->iftun_address)
 		config->iftun_address = config->bind_address;
+
+	if (!*config->pppoe_ac_name)
+		strncpy(config->pppoe_ac_name, DEFAULT_PPPOE_AC_NAME, sizeof(config->pppoe_ac_name) - 1);
 
 	// re-initialise the random number source
 	initrandom(config->random_device);
@@ -6036,7 +6106,7 @@ static tunnelidt new_tunnel()
 	tunnelidt i;
 	for (i = 1; i < MAXTUNNEL; i++)
 	{
-		if (tunnel[i].state == TUNNELFREE)
+		if ((tunnel[i].state == TUNNELFREE) && (i != TUNNEL_ID_PPPOE))
 		{
 			LOG(4, 0, i, "Assigning tunnel ID %u\n", i);
 			if (i > config->cluster_highest_tunnelid)

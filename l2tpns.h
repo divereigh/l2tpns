@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <netinet/in.h>
+#include <net/ethernet.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -23,6 +24,9 @@
 #define MAXADDRESS	20		// Maximum length for the Endpoint Discrminiator address
 #define MAXSESSION	60000		// could be up to 65535
 #define MAXTBFS		6000		// Maximum token bucket filters. Might need up to 2 * session.
+
+// Tunnel Id reserved for pppoe
+#define TUNNEL_ID_PPPOE	1
 
 #define RADIUS_SHIFT	6
 #define RADIUS_FDS	(1 << RADIUS_SHIFT)
@@ -323,9 +327,11 @@ typedef struct
 	struct in6_addr ipv6route;	// Static IPv6 route
 #ifdef LAC
 	sessionidt forwardtosession;	// LNS id_session to forward
-	char reserved[10];		// Space to expand structure without changing HB_VERSION
+	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
+	char reserved[4];		// Space to expand structure without changing HB_VERSION
 #else
-	char reserved[12];		// Space to expand structure without changing HB_VERSION
+	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
+	char reserved[6];		// Space to expand structure without changing HB_VERSION
 #endif
 }
 sessiont;
@@ -769,6 +775,10 @@ typedef struct
 	uint16_t bind_portremotelns;
 	in_addr_t bind_address_remotelns;
 #endif
+	char pppoe_if_name[IFNAMSIZ];	// Name pppoe interface to bind
+	char pppoe_service_name[64];	// pppoe service name
+	char pppoe_ac_name[64];
+	uint8_t pppoe_hwaddr[ETH_ALEN];	// MAC addr of interface pppoe to bind
 } configt;
 
 enum config_typet { INT, STRING, UNSIGNED_LONG, SHORT, BOOL, IPv4, IPv6 };
@@ -990,18 +1000,20 @@ extern int epollfd;
 
 struct event_data {
 	enum {
-	    	FD_TYPE_CLI,
-	    	FD_TYPE_CLUSTER,
-	    	FD_TYPE_TUN,
-	    	FD_TYPE_UDP,
-	    	FD_TYPE_CONTROL,
-	    	FD_TYPE_DAE,
+		FD_TYPE_CLI,
+		FD_TYPE_CLUSTER,
+		FD_TYPE_TUN,
+		FD_TYPE_UDP,
+		FD_TYPE_CONTROL,
+		FD_TYPE_DAE,
 		FD_TYPE_RADIUS,
 		FD_TYPE_BGP,
 		FD_TYPE_NETLINK,
 #ifdef LAC
 		FD_TYPE_UDPLAC,
 #endif
+		FD_TYPE_PPPOEDISC,
+		FD_TYPE_PPPOESESS
 	} type;
 	int index; // for RADIUS, BGP
 };

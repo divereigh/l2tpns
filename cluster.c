@@ -21,6 +21,7 @@
 #include "cluster.h"
 #include "util.h"
 #include "tbf.h"
+#include "pppoe.h"
 
 #ifdef BGP
 #include "bgp.h"
@@ -303,10 +304,39 @@ static int _forward_packet(uint8_t *data, int size, in_addr_t addr, int port, in
 //
 // The master just processes the payload as if it had
 // received it off the tun device.
-//
+//(note: THIS ROUTINE WRITES TO pack[-6]).
 int master_forward_packet(uint8_t *data, int size, in_addr_t addr, int port)
 {
-	return _forward_packet(data, size, addr, port, C_FORWARD);
+	uint8_t *p = data - (3 * sizeof(uint32_t));
+	uint8_t *psave = p;
+
+	if (!config->cluster_master_address) // No election has been held yet. Just skip it.
+		return -1;
+
+	LOG(4, 0, 0, "Forwarding packet from %s to master (size %d)\n", fmtaddr(addr, 0), size);
+
+	STAT(c_forwarded);
+	add_type(&p, C_FORWARD, addr, (uint8_t *) &port, sizeof(port)); // ick. should be uint16_t
+
+	return peer_send_data(config->cluster_master_address, psave, size + (3 * sizeof(uint32_t)));
+}
+
+// Forward PPPOE packet to the master.
+//(note: THIS ROUTINE WRITES TO pack[-4]).
+int master_forward_pppoe_packet(uint8_t *data, int size, uint8_t codepad)
+{
+	uint8_t *p = data - (2 * sizeof(uint32_t));
+	uint8_t *psave = p;
+
+	if (!config->cluster_master_address) // No election has been held yet. Just skip it.
+		return -1;
+
+	LOG(4, 0, 0, "Forward PPPOE packet to master, code %s (size %d)\n", get_string_codepad(codepad), size);
+
+	STAT(c_forwarded);
+	add_type(&p, C_PPPOE_FORWARD, codepad, NULL, 0);
+
+	return peer_send_data(config->cluster_master_address, psave, size + (2 * sizeof(uint32_t)));
 }
 
 // Forward a DAE RADIUS packet to the master.
@@ -606,6 +636,7 @@ void cluster_check_master(void)
 		// to become a master!!!
 
 	config->cluster_iam_master = 1;
+	pppoe_send_garp(); // gratuitous arp of the pppoe interface
 
 	LOG(0, 0, 0, "I am declaring myself the master!\n");
 
@@ -1869,6 +1900,17 @@ int processcluster(uint8_t *data, int size, in_addr_t addr)
 			else
 				processudp(p, s, &a);
 
+			return 0;
+		}
+	case C_PPPOE_FORWARD:
+		if (!config->cluster_iam_master)
+		{
+			LOG(0, 0, 0, "I'm not the master, but I got a C_PPPOE_FORWARD from %s?\n", fmtaddr(addr, 0));
+			return -1;
+		}
+		else
+		{
+			pppoe_process_forward(p, s, addr);
 			return 0;
 		}
 

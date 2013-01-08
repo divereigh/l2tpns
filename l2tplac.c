@@ -1,7 +1,10 @@
 /*
+ * Fernando ALVES 2013
  * Add functionality "LAC" to l2tpns.
  * Used to forward a ppp session to another "LNS".
+ * GPL licenced
  */
+
 #include <errno.h>
 #include <string.h>
 
@@ -11,6 +14,7 @@
 #include "cluster.h"
 
 #include "l2tplac.h"
+#include "pppoe.h"
 
 /* sequence diagram: Client <--> LAC <--> LNS1 <--> LNS2
  *
@@ -466,7 +470,7 @@ int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, 
 
 	if ((!tunnel[t].isremotelns) && (!tunnel[session[sess].tunnel].isremotelns))
 	{
-		LOG(0, sess, session[sess].tunnel, "Link Tunnel Session (%u) broken\n", s);
+		LOG(0, sess, session[sess].tunnel, "Link Tunnel Session (%u/%u) broken\n", s, t);
 		return 0;
 	}
 
@@ -481,6 +485,12 @@ int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, 
 			master_forward_packet(buf, len, s_addr, sin_port);
 			return 1;
 		}
+	}
+
+	if (t == TUNNEL_ID_PPPOE)
+	{
+		pppoe_forwardto_session_pppoe(buf, len, sess, proto);
+		return 1;
 	}
 
 	if (*buf & 0x40)

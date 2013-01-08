@@ -24,6 +24,7 @@
 #define C_BUNDLE		17	// Bundle structure.
 #define C_CBUNDLE		18	// Compressed bundle structure.
 #define C_MPPP_FORWARD	19	// MPPP Forwarded packet..
+#define C_PPPOE_FORWARD	20	// PPPOE Forwarded packet..
 
 #ifdef LAC
 #define HB_VERSION		7	// Protocol version number..
@@ -97,5 +98,6 @@ void cluster_heartbeat(void);
 void cluster_check_master(void);
 void cluster_check_slaves(void);
 int cmd_show_cluster(struct cli_def *cli, char *command, char **argv, int argc);
+int master_forward_pppoe_packet(uint8_t *data, int size, uint8_t codepad);
 
 #endif /* __CLUSTER_H__ */

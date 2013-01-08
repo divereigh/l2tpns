@@ -15,6 +15,7 @@
 #include <memory.h>
 
 #include "l2tpns.h"
+#include "pppoe.h"
 
 static uint16_t _checksum(uint8_t *addr, int count);
 
@@ -130,7 +131,9 @@ void send_ipv6_ra(sessionidt s, tunnelidt t, struct in6_addr *ip)
 	*(o+9) = 0x80;
 	*(o+23) = 1;
 	if (ip != NULL)
+	{
 		memcpy(o+24, ip, 16);	// dest = ip
+	}
 	else
 	{
 		// FF02::1 - all hosts

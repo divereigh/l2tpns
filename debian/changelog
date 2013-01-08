@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn3.2-pppoe) unstable; urgency=low
+
+  * pppoe server functionality
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Thu, 27 Dec 2012 22:54:02 +0100
+
 l2tpns (2.2.1-2fdn3.2) unstable; urgency=low
 
   * Authorize to change the source IP of the tunnels l2tp.

@@ -564,9 +564,9 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 			"idle",
 			"Rem.Time",
 #ifdef LAC
-			"LAC(L)/R LNS(R)",
+			"LAC(L)/RLNS(R)/PPPOE(P)",
 #else
-			"LAC",
+			"LAC(L)/PPPOE(P)",
 #endif
 			"CLI");
 
@@ -579,9 +579,9 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 		else
 			rem_time = session[i].timeout ? (session[i].timeout - (time_now-session[i].opened)) : 0;
 #ifdef LAC
-		cli_print(cli, "%5d %7d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %3s%-15s %s",
+		cli_print(cli, "%5d %7d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %3s%-20s %s",
 #else
-		cli_print(cli, "%5d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %-15s %s",
+		cli_print(cli, "%5d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %3s%-20s %s",
 #endif
 				i,
 #ifdef LAC
@@ -600,9 +600,11 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 				abs(time_now - (session[i].last_packet ? session[i].last_packet : time_now)),
 				(unsigned long)(rem_time),
 #ifdef LAC
-				tunnel[session[i].tunnel].isremotelns?"(R)":"(L)",
+				(session[i].tunnel == TUNNEL_ID_PPPOE)?"(P)":(tunnel[session[i].tunnel].isremotelns?"(R)":"(L)"),
+#else
+				(session[i].tunnel == TUNNEL_ID_PPPOE)?"(P)":"(L)",
 #endif
-				fmtaddr(htonl(tunnel[ session[i].tunnel ].ip), 1),
+				(session[i].tunnel == TUNNEL_ID_PPPOE)?fmtMacAddr(session[i].src_hwaddr):fmtaddr(htonl(tunnel[session[i].tunnel].ip), 1),
 				session[i].calling[0] ? session[i].calling : "*");
 	}
 	return CLI_OK;
@@ -686,18 +688,16 @@ static int cmd_show_tunnels(struct cli_def *cli, char *command, char **argv, int
 		if (!show_all && (!tunnel[i].ip || tunnel[i].die)) continue;
 
 		for (x = 0; x < MAXSESSION; x++) if (session[x].tunnel == i && session[x].opened && !session[x].die) sessions++;
-#ifdef LAC
 		cli_print(cli, "%4d %20s %20s %6s %6d %s",
-#else
-		cli_print(cli, "%4d %20s %20s %6s %6d",
-#endif
 				i,
 				*tunnel[i].hostname ? tunnel[i].hostname : "(null)",
 				fmtaddr(htonl(tunnel[i].ip), 0),
 				states[tunnel[i].state],
 				sessions
 #ifdef LAC
-				,(tunnel[i].isremotelns?"Tunnel To Remote LNS":"Tunnel To LAC")
+				,(i == TUNNEL_ID_PPPOE)?"Tunnel pppoe":(tunnel[i].isremotelns?"Tunnel To Remote LNS":"Tunnel To LAC")
+#else
+				,(i == TUNNEL_ID_PPPOE)?"Tunnel pppoe":"Tunnel To LAC"
 #endif
 				);
 	}

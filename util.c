@@ -28,6 +28,17 @@ char *fmtaddr(in_addr_t addr, int n)
     return strcpy(addrs[n], inet_ntoa(in));
 }
 
+char *fmtMacAddr(uint8_t *pMacAddr)
+{
+	static char strMAC[2*ETH_ALEN];
+
+	sprintf(strMAC, "%02X:%02X:%02X:%02X:%02X:%02X",
+			pMacAddr[0], pMacAddr[1], pMacAddr[2],
+			pMacAddr[3], pMacAddr[4], pMacAddr[5]);
+
+  return strMAC;
+}
+
 void *shared_malloc(unsigned int size)
 {
     void * p;

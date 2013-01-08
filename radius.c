@@ -22,6 +22,7 @@
 #ifdef LAC
 #include "l2tplac.h"
 #endif
+#include "pppoe.h"
 
 extern radiust *radius;
 extern sessiont *session;

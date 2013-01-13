@@ -2026,7 +2026,6 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		struct param_kill_session data = { &tunnel[session[s].tunnel], &session[s] };
 		LOG(2, s, session[s].tunnel, "Shutting down session %u: %s\n", s, reason);
 		run_plugins(PLUGIN_KILL_SESSION, &data);
-		session[s].die = TIME + 150; // Clean up in 15 seconds
 	}
 
 	if (session[s].ip && !walled_garden && !session[s].die)
@@ -2050,6 +2049,9 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		if (*config->accounting_dir && shut_acct_n < sizeof(shut_acct) / sizeof(*shut_acct))
 			memcpy(&shut_acct[shut_acct_n++], &session[s], sizeof(session[s]));
 	}
+
+	if (!session[s].die)
+		session[s].die = TIME + 150; // Clean up in 15 seconds
 
 	if (session[s].ip)
 	{                          // IP allocated, clear and unroute

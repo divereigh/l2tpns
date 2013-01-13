@@ -1,6 +1,7 @@
 /*
  * Fernando ALVES 2013
  * Add functionality "server pppoe" to l2tpns.
+ * inspiration pppoe.c of accel-ppp
  * GPL licenced
  */
 

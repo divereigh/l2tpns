@@ -5548,8 +5548,7 @@ int sessionsetup(sessionidt s, tunnelidt t)
 
 			if (ip == session[i].ip)
 			{
-				sessionkill(i, "Duplicate IP address");
-				cluster_listinvert_session(s, i);
+				sessionshutdown(i, "Duplicate IP address", CDN_ADMIN_DISC, TERM_ADMIN_RESET);  // close radius/routes, etc.
 				continue;
 			}
 
@@ -5570,7 +5569,7 @@ int sessionsetup(sessionidt s, tunnelidt t)
 
 			// Drop the new session in case of duplicate sessionss, not the old one.
 			if (!strcasecmp(user, session[i].user))
-				sessionkill(i, "Duplicate session for users");
+				sessionshutdown(i, "Duplicate session for users", CDN_ADMIN_DISC, TERM_ADMIN_RESET);  // close radius/routes, etc.
 		}
 	}
 

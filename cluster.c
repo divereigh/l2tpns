@@ -1019,53 +1019,26 @@ static int type_changed(int type, int id)
 	int i;
 
 	for (i = 0 ; i < config->cluster_num_changes ; ++i)
-		if ( cluster_changes[i].id == id &&
-			cluster_changes[i].type == type)
-			return 0;	// Already marked for change.
+	{
+		if ( cluster_changes[i].id == id && cluster_changes[i].type == type)
+		{
+			// Already marked for change, remove it
+			--config->cluster_num_changes;
+			memmove(&cluster_changes[i],
+					&cluster_changes[i+1],
+					(config->cluster_num_changes - i) * sizeof(cluster_changes[i]));
+			break;
+		}
+	}
 
-	cluster_changes[i].type = type;
-	cluster_changes[i].id = id;
+	cluster_changes[config->cluster_num_changes].type = type;
+	cluster_changes[config->cluster_num_changes].id = id;
 	++config->cluster_num_changes;
 
 	if (config->cluster_num_changes > MAX_CHANGES)
 		cluster_heartbeat(); // flush now
 
 	return 1;
-}
-
-// The deleted session, must be before the new session
-int cluster_listinvert_session(int sidnew, int sidtodel)
-{
-	int i, inew = 0;
-
-	for (i = 0 ; i < config->cluster_num_changes ; ++i)
-	{
-		if ( cluster_changes[i].id == sidtodel && cluster_changes[i].type == C_CSESSION)
-			return 0;	// Deleted session already before the new session.
-
-		if ( cluster_changes[i].id == sidnew && cluster_changes[i].type == C_CSESSION)
-		{
-			if (session[i].tunnel != T_FREE)
-				inew = i;
-			else
-				return 0;	// This a free session no invert.
-
-			break;
-		}
-	}
-
-	for ( ; i < config->cluster_num_changes ; ++i)
-	{
-		if ( cluster_changes[i].id == sidtodel && cluster_changes[i].type == C_CSESSION)
-		{
-			// Reverse position
-			cluster_changes[i].id = sidnew;
-			cluster_changes[inew].id = sidtodel;
-			return 1;
-		}
-	}
-
-	return 0;
 }
 
 // A particular session has been changed!

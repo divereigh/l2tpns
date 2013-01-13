@@ -83,7 +83,6 @@ typedef struct {
 
 int cluster_init(void);
 int processcluster(uint8_t *buf, int size, in_addr_t addr);
-int cluster_listinvert_session(int sidnew, int sidtodel);
 int cluster_send_session(int sid);
 int cluster_send_bundle(int bid);
 int cluster_send_tunnel(int tid);

@@ -60,8 +60,8 @@ H3 {
 </OL>
 
 <H2 ID="Overview">Overview</H2>
-l2tpns is half of a complete L2TP implementation.  It supports only the
-LNS side of the connection.<P>
+l2tpns a complete L2TP implementation. It supports the LAC, LNS and
+ PPPOE server.<P>
 
 L2TP (Layer 2 Tunneling Protocol) is designed to allow any layer 2
 protocol (e.g. Ethernet, PPP) to be tunneled over an IP connection.  l2tpns
@@ -379,15 +379,6 @@ Drop sessions who have not responded within idle_echo_timeout seconds
 (default: 240 (seconds))
 </LI>
 
-<LI><B>bind_address_remotelns</B> (ip address)<BR>
-Address of the interface to listen the remote LNS tunnels.
-If no address is given, all interfaces are listened (Any Address).
-</LI>
-
-<LI><B>bind_portremotelns</B> (short)<BR>
-Port to bind for the Remote LNS (default: 65432).
-</LI>
-
 <LI><B>auth_tunnel_change_addr_src</B> (boolean)<BR>
 This parameter authorize to change the source IP of the tunnels l2tp.
 This parameter can be used when the remotes BAS/LAC are l2tpns server
@@ -398,15 +389,62 @@ not clustered (the tunnel can be coming from different source IP)
 
 </UL>
 
-<P>The REMOTES LNS configuration is entered by the command:
+<P><U><B>LAC configuration</B></U></P>
+<UL>
+<LI><B>bind_address_remotelns</B> (ip address)<BR>
+Address of the interface to listen the remote LNS tunnels.
+If no address is given, all interfaces are listened (Any Address).
+</LI>
+
+<LI><B>bind_portremotelns</B> (short)<BR>
+Port to bind for the Remote LNS (default: 65432).
+</LI>
+
+</UL>
+
+<P>A static REMOTES LNS configuration can be entered by the command:</P>
 <DL> <DD><B>setforward</B> <I>MASK</I> <I>IP</I> <I>PORT</I> <I>SECRET</I> </DL>
 
 where <I>MASK</I> specifies the mask of users who have forwarded to
-remote LNS (ex: /myISP@company.com).</BR>
-where <I>IP</I> specifies the IP of the  remote LNS (ex: 66.66.66.55).</BR>
+remote LNS (ex: "/friendISP@company.com").</BR>
+where <I>IP</I> specifies the IP of the  remote LNS (ex: "66.66.66.55").</BR>
 where <I>PORT</I> specifies the L2TP Port of the remote LNS
 (Normally should be 1701) (ex: 1701).</BR>
 where <I>SECRET</I> specifies the secret password the remote LNS (ex: mysecret).</BR>
+</BR>
+The static Remote LNS configuration can be used when the friend ISP not 
+have a proxied Radius.</BR>
+If the proxied Radius is used, It will return the RADIUS attributes:</BR>
+       Tunnel-Type: 1 = L2TP</BR>
+       Tunnel-Medium-Type: 1 = IPv4</BR>
+       Tunnel-Password: 1 = "LESECRETL2TP"</BR>
+       Tunnel-Server-Endpoint: 1 = "88.xx.xx.x1"</BR>
+       Tunnel-Assignment-Id: 1 = "friendisp_lns1"</BR>
+       Tunnel-Type: 2 = L2TP</BR>
+       Tunnel-Medium-Type: 2 = IPv4</BR>
+       Tunnel-Password: 2 = "LESECRETL2TP"</BR>
+       Tunnel-Server-Endpoint: 2 = "88.xx.xx.x2"</BR>
+       Tunnel-Assignment-Id: 2 = "friendisp_lns2"</BR>    
+
+<P><U><B>PPPOE configuration</B></U></P>
+
+<UL>
+<LI><B>pppoe_if_to_bind</B> (string)<BR>
+PPPOE server interface to bind (ex: "eth0.12"), If not specified the server PPPOE is not enabled.
+For the pppoe clustering, all the interfaces PPPOE of the clusters must use the same HW address (MAC address).
+</LI>
+
+<LI><B>pppoe_service_name</B> (string)<BR>
+PPPOE service name (default: NULL).
+</LI>
+
+<LI><B>pppoe_ac_name</B> (string)<BR>
+PPPOE  access concentrator name (default: "l2tpns-pppoe").
+</LI>
+
+</UL>
+
+<P><U><B>BGP configuration</B></U></P>
 
 <P>BGP routing configuration is entered by the command:
 The routing configuration section is entered by the command

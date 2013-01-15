@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn3.4) unstable; urgency=low
+
+  * Add parameter to disable the send of the L2TP HELLO message (Apple compatibility).
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>, 15 Jan 2013 15:17:22 +0100
+
 l2tpns (2.2.1-2fdn3.3) unstable; urgency=low
 
   * pppoe server functionality

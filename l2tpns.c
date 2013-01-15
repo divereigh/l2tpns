@@ -190,7 +190,8 @@ config_descriptt config_values[] = {
 	CONFIG("pppoe_if_to_bind", pppoe_if_to_bind, STRING),
 	CONFIG("pppoe_service_name", pppoe_service_name, STRING),
 	CONFIG("pppoe_ac_name", pppoe_ac_name, STRING),
-	{ NULL, 0, 0, 0 },
+	CONFIG("disable_sending_hello", disable_sending_hello, BOOL),
+	{ NULL, 0, 0, 0 }
 };
 
 static char *plugin_functions[] = {
@@ -3502,10 +3503,13 @@ static void regular_cleanups(double period)
 		// Send hello
 		if (tunnel[t].state == TUNNELOPEN && !tunnel[t].controlc && (time_now - tunnel[t].lastrec) > 60)
 		{
-			controlt *c = controlnew(6); // sending HELLO
-			controladd(c, 0, t); // send the message
-			LOG(3, 0, t, "Sending HELLO message\n");
-			t_actions++;
+			if (!config->disable_sending_hello)
+			{
+				controlt *c = controlnew(6); // sending HELLO
+				controladd(c, 0, t); // send the message
+				LOG(3, 0, t, "Sending HELLO message\n");
+				t_actions++;
+			}
 		}
 
 		// Check for tunnel changes requested from the CLI

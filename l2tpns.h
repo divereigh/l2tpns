@@ -779,6 +779,7 @@ typedef struct
 	char pppoe_service_name[64];	// pppoe service name
 	char pppoe_ac_name[64];
 	uint8_t pppoe_hwaddr[ETH_ALEN];	// MAC addr of interface pppoe to bind
+	int disable_sending_hello; // Disable l2tp sending HELLO message for Apple compatibility.
 } configt;
 
 enum config_typet { INT, STRING, UNSIGNED_LONG, SHORT, BOOL, IPv4, IPv6 };

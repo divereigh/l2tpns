@@ -2607,6 +2607,85 @@ uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelid
 	return b;
 }
 
+// fill in a L2TP message with a PPP frame,
+// returns start of PPP frame
+//(note: THIS ROUTINE CAN WRITES TO p[-28]).
+uint8_t *opt_makeppp(uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype, uint8_t prio, bundleidt bid, uint8_t mp_bits)
+{
+	uint16_t hdr = 0x0002; // L2TP with no options
+	uint16_t type = mtype;
+	uint8_t *b = p;
+
+	if (t == TUNNEL_ID_PPPOE)
+	{
+		return opt_pppoe_makeppp(p, l, s, t, mtype, prio, bid, mp_bits);
+	}
+
+	// Check whether this session is part of multilink
+	if (bid)
+	{
+		if (bundle[bid].num_of_links > 1)
+			type = PPPMP; // Change PPP message type to the PPPMP
+		else
+			bid = 0;
+	}
+
+	if (bid)
+	{
+		// Add the message type if this fragment has the begin bit set
+		if (mp_bits & MP_BEGIN)
+		{
+			b -= 2;
+			*(uint16_t *) b = htons(mtype); // Message type
+		}
+
+		// Set the sequence number and (B)egin (E)nd flags
+		if (session[s].mssf)
+		{
+			// Set the multilink bits
+			uint16_t bits_send = mp_bits;
+			b -= 2;
+			*(uint16_t *) b = htons((bundle[bid].seq_num_t & 0x0FFF)|bits_send);
+		}
+		else
+		{
+			b -= 4;
+			*(uint32_t *) b = htonl(bundle[bid].seq_num_t);
+			// Set the multilink bits
+			*b = mp_bits;
+		}
+
+		bundle[bid].seq_num_t++;
+	}
+
+	if (type < 0x100 && session[s].flags & SESSION_PFC)
+	{
+		b--;
+		*b = type;
+	}
+	else
+	{
+		b -= 2;
+		*(uint16_t *) b = htons(type);
+	}
+
+	if (type == PPPLCP || !(session[s].flags & SESSION_ACFC))
+	{
+		b -= 2;
+		*(uint16_t *) b = htons(0xFF03); // HDLC header
+	}
+
+	if (prio) hdr |= 0x0100; // set priority bit
+	b -= 2;
+	*(uint16_t *) b = htons(session[s].far); // session
+	b -= 2;
+	*(uint16_t *) b = htons(tunnel[t].far); // tunnel
+	b -= 2;
+	*(uint16_t *) b = htons(hdr);
+
+	return b;
+}
+
 static int add_lcp_auth(uint8_t *b, int size, int authtype)
 {
 	int len = 0;

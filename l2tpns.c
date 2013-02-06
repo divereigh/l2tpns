@@ -1625,17 +1625,15 @@ void processipout(uint8_t *buf, int len)
 		else
 		{
 			// Send it as one frame (NO MPPP Frame)
-			uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
-			if (!p) return;
-			tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+			uint8_t *p = opt_makeppp(buf, len, s, t, PPPIP, 0, 0, 0);
+			tunnelsend(p, len + (buf-p), t); // send it...
 			update_session_out_stat(s, sp, len);
 		}
 	}
 	else
 	{
-		uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, 0, 0);
-		if (!p) return;
-		tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+		uint8_t *p = opt_makeppp(buf, len, s, t, PPPIP, 0, 0, 0);
+		tunnelsend(p, len + (buf-p), t); // send it...
 		update_session_out_stat(s, sp, len);
 	}
 
@@ -3969,9 +3967,9 @@ static void mainloop(void)
 {
 	int i;
 	uint8_t buf[65536];
-	uint8_t *p = buf + 24; // for the hearder of the forwarded MPPP packet (see C_MPPP_FORWARD)
+	uint8_t *p = buf + 32; // for the hearder of the forwarded MPPP packet (see C_MPPP_FORWARD)
 						// and the forwarded pppoe session
-	int size_bufp = sizeof(buf) - 24;
+	int size_bufp = sizeof(buf) - 32;
 	clockt next_cluster_ping = 0;	// send initial ping immediately
 	struct epoll_event events[BASE_FDS + RADIUS_FDS + EXTRA_FDS];
 	int maxevent = sizeof(events)/sizeof(*events);
@@ -4160,26 +4158,26 @@ static void mainloop(void)
 
 				case FD_TYPE_CONTROL: // nsctl commands
 					alen = sizeof(addr);
-					s = recvfromto(controlfd, buf, sizeof(buf), MSG_WAITALL, (struct sockaddr *) &addr, &alen, &local);
-					if (s > 0) processcontrol(buf, s, &addr, alen, &local);
+					s = recvfromto(controlfd, p, size_bufp, MSG_WAITALL, (struct sockaddr *) &addr, &alen, &local);
+					if (s > 0) processcontrol(p, s, &addr, alen, &local);
 					n--;
 					break;
 
 				case FD_TYPE_DAE: // DAE requests
 					alen = sizeof(addr);
-					s = recvfromto(daefd, buf, sizeof(buf), MSG_WAITALL, (struct sockaddr *) &addr, &alen, &local);
-					if (s > 0) processdae(buf, s, &addr, alen, &local);
+					s = recvfromto(daefd, p, size_bufp, MSG_WAITALL, (struct sockaddr *) &addr, &alen, &local);
+					if (s > 0) processdae(p, s, &addr, alen, &local);
 					n--;
 					break;
 
 				case FD_TYPE_RADIUS: // RADIUS response
 					alen = sizeof(addr);
-					s = recvfrom(radfds[d->index], buf, sizeof(buf), MSG_WAITALL, (struct sockaddr *) &addr, &alen);
+					s = recvfrom(radfds[d->index], p, size_bufp, MSG_WAITALL, (struct sockaddr *) &addr, &alen);
 					if (s >= 0 && config->cluster_iam_master)
 					{
 						if (addr.sin_addr.s_addr == config->radiusserver[0] ||
 						    addr.sin_addr.s_addr == config->radiusserver[1])
-							processrad(buf, s, d->index);
+							processrad(p, s, d->index);
 						else
 							LOG(3, 0, 0, "Dropping RADIUS packet from unknown source %s\n",
 								fmtaddr(addr.sin_addr.s_addr, 0));
@@ -4197,8 +4195,8 @@ static void mainloop(void)
 
 				case FD_TYPE_NETLINK:
 				{
-					struct nlmsghdr *nh = (struct nlmsghdr *)buf;
-					s = netlink_recv(buf, sizeof(buf));
+					struct nlmsghdr *nh = (struct nlmsghdr *)p;
+					s = netlink_recv(p, size_bufp);
 					if (nh->nlmsg_type == NLMSG_ERROR)
 					{
 						struct nlmsgerr *errmsg = NLMSG_DATA(nh);
@@ -4319,11 +4317,11 @@ static void mainloop(void)
 			if (c >= config->multi_read_count)
 			{
 #ifdef LAC
-				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d cluster and %d rmlns packets\n",
-					config->multi_read_count, udp_pkts, tun_pkts, cluster_pkts, udplac_pkts);
+				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d cluster %d rmlns and %d pppoe packets\n",
+					config->multi_read_count, udp_pkts, tun_pkts, cluster_pkts, udplac_pkts, pppoesess_pkts);
 #else
-				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun and %d cluster packets\n",
-					config->multi_read_count, udp_pkts, tun_pkts, cluster_pkts);
+				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d cluster and %d pppoe packets\n",
+					config->multi_read_count, udp_pkts, tun_pkts, cluster_pkts, pppoesess_pkts);
 #endif
 				STAT(multi_read_exceeded);
 				more++;

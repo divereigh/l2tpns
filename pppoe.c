@@ -763,6 +763,72 @@ uint8_t *pppoe_makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tu
 	return b;
 }
 
+// fill in a PPPOE message with a PPP frame,
+// returns start of PPP frame
+//(note: THIS ROUTINE WRITES TO p[-28]).
+uint8_t *opt_pppoe_makeppp(uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype, uint8_t prio, bundleidt bid, uint8_t mp_bits)
+{
+	uint16_t type = mtype;
+	uint16_t hdrlen = l;
+	uint8_t *b = p;
+	struct pppoe_hdr *hdr;
+
+	if (t != TUNNEL_ID_PPPOE)
+		return NULL;
+
+	// Check whether this session is part of multilink
+	if (bid)
+	{
+		if (bundle[bid].num_of_links > 1)
+			type = PPPMP; // Change PPP message type to the PPPMP
+		else
+			bid = 0;
+	}
+
+	if (bid)
+	{
+		// Add the message type if this fragment has the begin bit set
+		if (mp_bits & MP_BEGIN)
+		{
+			b -= 2;
+			*(uint16_t *) b = htons(mtype); // Message type
+		}
+
+		// Set the sequence number and (B)egin (E)nd flags
+		if (session[s].mssf)
+		{
+			// Set the multilink bits
+			uint16_t bits_send = mp_bits;
+			b -= 2;
+			*(uint16_t *) b = htons((bundle[bid].seq_num_t & 0x0FFF)|bits_send);
+		}
+		else
+		{
+			b -= 4;
+			*(uint32_t *) b = htonl(bundle[bid].seq_num_t);
+			// Set the multilink bits
+			*b = mp_bits;
+		}
+
+		bundle[bid].seq_num_t++;
+	}
+
+	b -= 2;
+	*(uint16_t *) b = htons(type);
+
+	// Size ppp packet
+	hdrlen += (p - b);
+
+	// 14 bytes ethernet Header + 6 bytes header pppoe
+	b -= (ETH_HLEN + sizeof(*hdr));
+	setup_header(b, config->pppoe_hwaddr, session[s].src_hwaddr, CODE_SESS, s, ETH_P_PPP_SES);
+	hdr = (struct pppoe_hdr *)(b + ETH_HLEN);
+	// Store length on header pppoe
+	hdr->length = hdrlen;
+
+	return b;
+}
+
 // pppoe discovery recv data
 void process_pppoe_disc(uint8_t *pack, int size)
 {

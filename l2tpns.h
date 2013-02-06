@@ -899,6 +899,7 @@ void processipv6in(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processccp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void sendchap(sessionidt s, tunnelidt t);
 uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype, uint8_t prio, bundleidt bid, uint8_t mp_bits);
+uint8_t *opt_makeppp(uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype, uint8_t prio, bundleidt bid, uint8_t mp_bits);
 void sendlcp(sessionidt s, tunnelidt t);
 void send_ipin(sessionidt s, uint8_t *buf, int len);
 void sendccp(sessionidt s, tunnelidt t);

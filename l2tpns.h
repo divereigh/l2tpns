@@ -64,7 +64,7 @@
 #define MAXFRAGLEN	1496	// Maximum length for Multilink fragment (The multilink may contain only one link)
 #define MAXFRAGNUM	512		// Maximum number of Multilink fragment in a bundle (must be in the form of 2^X)
 					// it's not expected to have a space for more than 10 unassembled packets = 10 * MAXBUNDLESES
-#define	MAXFRAGNUM_MASK	511		// Must be equal to MAXFRAGNUM-1
+#define	MAXFRAGNUM_MASK	(MAXFRAGNUM - 1)		// Must be equal to MAXFRAGNUM-1
 
 // Constants
 #ifndef ETCDIR
@@ -356,9 +356,9 @@ bundlet;
 
 typedef struct
 {
-        fragmentt fragment[MAXFRAGNUM];
-        uint8_t reassembled_frame[MAXETHER];    // The reassembled frame
-        uint16_t re_frame_len;                  // The reassembled frame length
+	fragmentt fragment[MAXFRAGNUM];
+	uint8_t reassembled_frame[MAXETHER];    // The reassembled frame
+	uint16_t re_frame_len;                  // The reassembled frame length
 	uint16_t re_frame_begin_index, re_frame_end_index;	// reassembled frame begin index, end index respectively
 	uint16_t start_index, end_index;	// start and end sequence numbers available on the fragments array respectively
 	uint32_t M;				// Minumum frame sequence number received over all bundle members

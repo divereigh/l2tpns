@@ -1204,24 +1204,24 @@ static void setepdis(epdist *ep1, epdist ep2)
 
 static bundleidt new_bundle()
 {
-        bundleidt i;
-        for (i = 1; i < MAXBUNDLE; i++)
-        {
-                if (bundle[i].state == BUNDLEFREE)
-                {
-                        LOG(4, 0, 0, "MPPP: Assigning bundle ID %d\n", i);
-                        bundle[i].num_of_links = 1;
-                        bundle[i].last_check = time_now;        // Initialize last_check value
-                        bundle[i].state = BUNDLEOPEN;
-                        bundle[i].current_ses = -1;     // This is to enforce the first session 0 to be used at first
+	bundleidt i;
+	for (i = 1; i < MAXBUNDLE; i++)
+	{
+		if (bundle[i].state == BUNDLEFREE)
+		{
+			LOG(4, 0, 0, "MPPP: Assigning bundle ID %d\n", i);
+			bundle[i].num_of_links = 1;
+			bundle[i].last_check = time_now;        // Initialize last_check value
+			bundle[i].state = BUNDLEOPEN;
+			bundle[i].current_ses = -1;     // This is to enforce the first session 0 to be used at first
 			memset(&frag[i], 0, sizeof(fragmentationt));
-                        if (i > config->cluster_highest_bundleid)
-                                config->cluster_highest_bundleid = i;
-                        return i;
-                }
-        }
-        LOG(0, 0, 0, "MPPP: Can't find a free bundle! There shouldn't be this many in use!\n");
-        return 0;
+			if (i > config->cluster_highest_bundleid)
+					config->cluster_highest_bundleid = i;
+			return i;
+		}
+	}
+	LOG(0, 0, 0, "MPPP: Can't find a free bundle! There shouldn't be this many in use!\n");
+	return 0;
 }
 
 static void ipcp_open(sessionidt s, tunnelidt t)
@@ -1934,7 +1934,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	{
 		// There have a long break of the link !!!!!!!!
 		// M_offset is bigger that the fragmentation buffer size
-		LOG(3, s, t, "MPPP: M_offset out of range, min:%d, begin_seq:%d, jitteravg:%d\n", Mmin, this_fragmentation->start_seq, sess_local[s].jitteravg);
+		LOG(3, s, t, "MPPP: M_offset out of range, min:%d, begin_seq:%d\n", Mmin, this_fragmentation->start_seq);
 
 		// Calculate the new start index, the previous frag are lost
 		begin_index = (M_offset + this_fragmentation->start_index) & MAXFRAGNUM_MASK;
@@ -1951,7 +1951,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	if (frag_offset < 0)
 	{
 		// this packet comes before the next
-		LOG(3, s, t, "MPPP: packet comes before the next, seq:%d, begin_seq:%d, size frag:%d\n", seq_num, this_fragmentation->start_seq, l);
+		LOG(3, s, t, "MPPP: (COMES BEFORE) the next, seq:%d, begin_seq:%d, size_frag:%d, flags:%02X is LOST\n", seq_num, this_fragmentation->start_seq, l, flags);
 		return;
 	}
 
@@ -1959,7 +1959,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	if (frag_offset >= MAXFRAGNUM)
 	{
 		// frag_offset is bigger that the fragmentation buffer size
-		LOG(3, s, t, "MPPP: Index out of range, seq:%d, begin_seq:%d, jitteravg:%d\n", seq_num, this_fragmentation->start_seq, sess_local[s].jitteravg);
+		LOG(3, s, t, "MPPP: Index out of range, seq:%d, begin_seq:%d\n", seq_num, this_fragmentation->start_seq);
 		return;
 	}
 
@@ -1971,8 +1971,8 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 	if (this_frag->length > 0)
 		// This fragment is lost, It was around the buffer and it was never completed the packet.
-		LOG(3, this_frag->sid, this_frag->tid, "MPPP: (INSERT) seq_num:%d frag_index:%d flags:%d jitteravg:%d is LOST\n",
-			this_frag->seq, frag_index, this_frag->flags, this_frag->jitteravg);
+		LOG(3, this_frag->sid, this_frag->tid, "MPPP: (INSERT) seq_num:%d frag_index:%d flags:%02X is LOST\n",
+			this_frag->seq, frag_index, this_frag->flags);
 
 	this_frag->length = l;
 	this_frag->sid = s;
@@ -2001,9 +2001,9 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		{
 			// This fragment is lost, It was around the buffer and it was never completed the packet.
 			LOG(3, this_fragmentation->fragment[frag_index_next].sid, this_fragmentation->fragment[frag_index_next].tid,
-				"MPPP: (NEXT) seq_num:%d frag_index:%d flags:%d jitteravg:%d is LOST\n",
+				"MPPP: (NEXT) seq_num:%d frag_index:%d flags:%02X is LOST\n",
 				this_fragmentation->fragment[frag_index_next].seq, frag_index_next,
-				this_fragmentation->fragment[frag_index_next].flags, this_fragmentation->fragment[frag_index_next].jitteravg);
+				this_fragmentation->fragment[frag_index_next].flags);
 			// this frag is lost
 			this_fragmentation->fragment[frag_index_next].length = 0;
 			this_fragmentation->fragment[frag_index_next].flags = 0;
@@ -2020,9 +2020,9 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		{
 			// This fragment is lost, It was around the buffer and it was never completed the packet.
 			LOG(3, this_fragmentation->fragment[frag_index_prev].sid, this_fragmentation->fragment[frag_index_prev].tid,
-				"MPPP: (PREV) seq_num:%d frag_index:%d flags:%d jitteravg:%d is LOST\n",
+				"MPPP: (PREV) seq_num:%d frag_index:%d flags:%02X is LOST\n",
 				this_fragmentation->fragment[frag_index_prev].seq, frag_index_prev,
-				this_fragmentation->fragment[frag_index_prev].flags, this_fragmentation->fragment[frag_index_prev].jitteravg);
+				this_fragmentation->fragment[frag_index_prev].flags);
 
 			this_fragmentation->fragment[frag_index_prev].length = 0;
 			this_fragmentation->fragment[frag_index_prev].flags = 0;
@@ -2066,9 +2066,9 @@ find_frame:
 							{
 								// This fragment is lost, it was never completed the packet.
 								LOG(3, this_fragmentation->fragment[end_index].sid, this_fragmentation->fragment[end_index].tid,
-									"MPPP: (FIND END) seq_num:%d frag_index:%d flags:%d jitteravg:%d is LOST\n",
+									"MPPP: (FIND END) seq_num:%d frag_index:%d flags:%02X is LOST\n",
 									this_fragmentation->fragment[end_index].seq, begin_index,
-									this_fragmentation->fragment[end_index].flags, this_fragmentation->fragment[end_index].jitteravg);
+									this_fragmentation->fragment[end_index].flags);
 								// this frag is lost
 								this_fragmentation->fragment[end_index].length = 0;
 								this_fragmentation->fragment[end_index].flags = 0;
@@ -2097,9 +2097,9 @@ find_frame:
 			{
 				// This fragment is lost, it was never completed the packet.
 				LOG(3, this_fragmentation->fragment[begin_index].sid, this_fragmentation->fragment[begin_index].tid,
-					"MPPP: (FIND BEGIN) seq_num:%d frag_index:%d flags:%d jitteravg:%d is LOST\n",
+					"MPPP: (FIND BEGIN) seq_num:%d frag_index:%d flags:%02X is LOST\n",
 					this_fragmentation->fragment[begin_index].seq, begin_index,
-					this_fragmentation->fragment[begin_index].flags, this_fragmentation->fragment[begin_index].jitteravg);
+					this_fragmentation->fragment[begin_index].flags);
 				// this frag is lost
 				this_fragmentation->fragment[begin_index].length = 0;
 				this_fragmentation->fragment[begin_index].flags = 0;
@@ -2117,6 +2117,10 @@ assembling_frame:
 	{
 		if (!(this_fragmentation->fragment[begin_index].flags & MP_BEGIN))
 		{
+			LOG(3, this_fragmentation->fragment[begin_index].sid, this_fragmentation->fragment[begin_index].tid,
+				"MPPP: (NOT BEGIN) seq_num:%d frag_index:%d flags:%02X\n",
+				this_fragmentation->fragment[begin_index].seq, begin_index,
+				this_fragmentation->fragment[begin_index].flags);
 			// should occur only after an "M_Offset out of range"
 			// The start sequence must be a begin sequence
 			this_fragmentation->start_index = (begin_index +1) & MAXFRAGNUM_MASK;
@@ -2195,9 +2199,9 @@ assembling_frame:
 		(this_fragmentation->fragment[begin_index].seq != this_fragmentation->start_seq))
 	{
 		LOG(3, this_fragmentation->fragment[begin_index].sid, this_fragmentation->fragment[begin_index].tid,
-				"MPPP: (START) seq_num:%d frag_index:%d flags:%d jitteravg:%d is LOST\n",
+				"MPPP: (START) seq_num:%d frag_index:%d flags:%02X is LOST\n",
 				this_fragmentation->fragment[begin_index].seq, begin_index,
-				this_fragmentation->fragment[begin_index].flags, this_fragmentation->fragment[begin_index].jitteravg);
+				this_fragmentation->fragment[begin_index].flags);
 			this_fragmentation->fragment[begin_index].length = 0;
 			this_fragmentation->fragment[begin_index].flags = 0;
 	}

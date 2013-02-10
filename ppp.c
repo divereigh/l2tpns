@@ -1769,7 +1769,7 @@ void processipin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	if (!session[s].bundle || bundle[session[s].bundle].num_of_links < 2) // FIXME: 
 	{
 		// no spoof (do sessionbyip to handled statically routed subnets)
-		if (ip != session[s].ip && sessionbyip(htonl(ip)) != s)
+		if (!config->disable_no_spoof && ip != session[s].ip && sessionbyip(htonl(ip)) != s)
 		{
 			LOG(4, s, t, "Dropping packet with spoofed IP %s\n", fmtaddr(htonl(ip), 0));
 			return;

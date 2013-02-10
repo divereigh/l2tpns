@@ -191,6 +191,7 @@ config_descriptt config_values[] = {
 	CONFIG("pppoe_service_name", pppoe_service_name, STRING),
 	CONFIG("pppoe_ac_name", pppoe_ac_name, STRING),
 	CONFIG("disable_sending_hello", disable_sending_hello, BOOL),
+	CONFIG("disable_no_spoof", disable_no_spoof, BOOL),
 	{ NULL, 0, 0, 0 }
 };
 

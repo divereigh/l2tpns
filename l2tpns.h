@@ -247,10 +247,7 @@ typedef struct controls		// control message
 {
 	struct controls *next;	// next in queue
 	uint16_t length;	// length
-	union {
-		uint8_t buf[MAXCONTROL];
-		uint16_t buf16[MAXCONTROL/2];
-	} __attribute__ ((__transparent_union__));
+	uint8_t buf[MAXCONTROL];
 }
 controlt;
 

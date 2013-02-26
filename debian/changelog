@@ -1,3 +1,10 @@
+l2tpns (2.2.1-2fdn3.6) unstable; urgency=low
+
+  * Fix Warning: dereferencing type-punned pointer will break strict...
+  * Fix: Tunnel creation does not work when the length of the hostname is odd. (revert fix: Add a uint16_t control buffer type, as a union)
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Tue, 26 Feb 2013 09:07:16 +0100
+
 l2tpns (2.2.1-2fdn3.5) unstable; urgency=low
 
   * Update debian/changelog

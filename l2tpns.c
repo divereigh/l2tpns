@@ -1872,7 +1872,8 @@ static controlt *controlnew(uint16_t mtype)
 	}
 	assert(c);
 	c->next = 0;
-	*(uint16_t *) (c->buf + 0) = htons(0xC802); // flags/ver
+	c->buf[0] = 0xC8; // flags
+	c->buf[1] = 0x02; // ver
 	c->length = 12;
 	control16(c, 0, mtype, 1);
 	return c;
@@ -1882,17 +1883,17 @@ static controlt *controlnew(uint16_t mtype)
 // (ZLB send).
 static void controlnull(tunnelidt t)
 {
-	uint8_t buf[12];
+	uint16_t buf[6];
 	if (tunnel[t].controlc)	// Messages queued; They will carry the ack.
 		return;
 
-	*(uint16_t *) (buf + 0) = htons(0xC802); // flags/ver
-	*(uint16_t *) (buf + 2) = htons(12); // length
-	*(uint16_t *) (buf + 4) = htons(tunnel[t].far); // tunnel
-	*(uint16_t *) (buf + 6) = htons(0); // session
-	*(uint16_t *) (buf + 8) = htons(tunnel[t].ns); // sequence
-	*(uint16_t *) (buf + 10) = htons(tunnel[t].nr); // sequence
-	tunnelsend(buf, 12, t);
+	buf[0] = htons(0xC802); // flags/ver
+	buf[1] = htons(12); // length
+	buf[2] = htons(tunnel[t].far); // tunnel
+	buf[3] = htons(0); // session
+	buf[4] = htons(tunnel[t].ns); // sequence
+	buf[5] = htons(tunnel[t].nr); // sequence
+	tunnelsend((uint8_t *)buf, 12, t);
 }
 
 // add a control message to a tunnel, and send if within window
@@ -2152,14 +2153,15 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 			pppoe_shutdown_session(s);
 		}
 		else
-		{	// Send CDN
+		{
+			// Send CDN
 			controlt *c = controlnew(14); // sending CDN
 			if (cdn_error)
 			{
-				uint8_t buf[4];
-				*(uint16_t *) buf     = htons(cdn_result);
-				*(uint16_t *) (buf+2) = htons(cdn_error);
-				controlb(c, 1, buf, 4, 1);
+				uint16_t buf[2];
+				buf[0] = htons(cdn_result);
+				buf[1] = htons(cdn_error);
+				controlb(c, 1, (uint8_t *)buf, 4, 1);
 			}
 			else
 				control16(c, 1, cdn_result, 1);
@@ -2361,21 +2363,21 @@ static void tunnelshutdown(tunnelidt t, char *reason, int result, int error, cha
 		controlt *c = controlnew(4);	// sending StopCCN
 		if (error)
 		{
-			uint8_t buf[64];
+			uint16_t buf[32];
 			int l = 4;
-			*(uint16_t *) buf     = htons(result);
-			*(uint16_t *) (buf+2) = htons(error);
+			buf[0] = htons(result);
+			buf[1] = htons(error);
 			if (msg)
 			{
 				int m = strlen(msg);
 				if (m + 4 > sizeof(buf))
 				    m = sizeof(buf) - 4;
 
-				memcpy(buf+4, msg, m);
+				memcpy(buf+2, msg, m);
 				l += m;
 			}
 
-			controlb(c, 1, buf, l, 1);
+			controlb(c, 1, (uint8_t *)buf, l, 1);
 		}
 		else
 			control16(c, 1, result, 1);

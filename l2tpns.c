@@ -53,24 +53,18 @@
 #include "bgp.h"
 #endif
 
-#ifdef LAC
 #include "l2tplac.h"
-#endif
 #include "pppoe.h"
 
-#ifdef LAC
 char * Vendor_name = "Linux L2TPNS";
 uint32_t call_serial_number = 0;
-#endif
 
 // Globals
 configt *config = NULL;		// all configuration
 int nlfd = -1;			// netlink socket
 int tunfd = -1;			// tun interface file handle. (network device)
-int udpfd = -1;			// UDP file handle
-#ifdef LAC
+int udpfd[MAX_UDPFD + 1] = INIT_TABUDPFD;		// array UDP file handle + 1 for lac udp
 int udplacfd = -1;		// UDP LAC file handle
-#endif
 int controlfd = -1;		// Control signal handle
 int clifd = -1;			// Socket listening for CLI connections.
 int daefd = -1;			// Socket listening for DAE connections.
@@ -181,17 +175,16 @@ config_descriptt config_values[] = {
 	CONFIG("idle_echo_timeout", idle_echo_timeout, INT),
 	CONFIG("iftun_address", iftun_address, IPv4),
 	CONFIG("tundevicename", tundevicename, STRING),
-#ifdef LAC
 	CONFIG("disable_lac_func", disable_lac_func, BOOL),
 	CONFIG("auth_tunnel_change_addr_src", auth_tunnel_change_addr_src, BOOL),
 	CONFIG("bind_address_remotelns", bind_address_remotelns, IPv4),
 	CONFIG("bind_portremotelns", bind_portremotelns, SHORT),
-#endif
 	CONFIG("pppoe_if_to_bind", pppoe_if_to_bind, STRING),
 	CONFIG("pppoe_service_name", pppoe_service_name, STRING),
 	CONFIG("pppoe_ac_name", pppoe_ac_name, STRING),
 	CONFIG("disable_sending_hello", disable_sending_hello, BOOL),
 	CONFIG("disable_no_spoof", disable_no_spoof, BOOL),
+	CONFIG("bind_multi_address", bind_multi_address, STRING),
 	{ NULL, 0, 0, 0 }
 };
 
@@ -700,7 +693,7 @@ static void inittun(void)
 	}
 
    if (*config->tundevicename)
-         strncpy(ifr.ifr_name, config->tundevicename, IFNAMSIZ);
+		strncpy(ifr.ifr_name, config->tundevicename, IFNAMSIZ);
 
 	if (ioctl(tunfd, TUNSETIFF, (void *) &ifr) < 0)
 	{
@@ -762,14 +755,30 @@ static void inittun(void)
 		req.ifmsg.ifaddr.ifa_scope = RT_SCOPE_UNIVERSE;
 		req.ifmsg.ifaddr.ifa_index = tunidx;
 
-		if (config->iftun_address)
-			ip = config->iftun_address;
+		if (config->nbmultiaddress > 1)
+		{
+			int i;
+			for (i = 0; i < config->nbmultiaddress ; i++)
+			{
+				ip = config->iftun_n_address[i];
+				netlink_addattr(&req.nh, IFA_LOCAL, &ip, sizeof(ip));
+				if (netlink_send(&req.nh) < 0)
+					goto senderror;
+			}
+		}
 		else
-			ip = 0x01010101; // 1.1.1.1
-		netlink_addattr(&req.nh, IFA_LOCAL, &ip, sizeof(ip));
+		{
+			if (config->iftun_address)
+				ip = config->iftun_address;
+			else
+				ip = 0x01010101; // 1.1.1.1
+			netlink_addattr(&req.nh, IFA_LOCAL, &ip, sizeof(ip));
 
-		if (netlink_send(&req.nh) < 0)
-			goto senderror;
+			if (netlink_send(&req.nh) < 0)
+				goto senderror;
+		}
+
+
 
 		// Only setup IPv6 on the tun device if we have a configured prefix
 		if (config->ipv6_prefix.s6_addr[0]) {
@@ -839,56 +848,12 @@ senderror:
 	exit(1);
 }
 
-// set up UDP ports
-static void initudp(void)
+// set up LAC UDP ports
+static void initlacudp(void)
 {
 	int on = 1;
 	struct sockaddr_in addr;
 
-	// Tunnel
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(L2TPPORT);
-	addr.sin_addr.s_addr = config->bind_address;
-	udpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setsockopt(udpfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	{
-		int flags = fcntl(udpfd, F_GETFL, 0);
-		fcntl(udpfd, F_SETFL, flags | O_NONBLOCK);
-	}
-	if (bind(udpfd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
-	{
-		LOG(0, 0, 0, "Error in UDP bind: %s\n", strerror(errno));
-		exit(1);
-	}
-
-	// Control
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(NSCTL_PORT);
-	controlfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setsockopt(controlfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	setsockopt(controlfd, SOL_IP, IP_PKTINFO, &on, sizeof(on)); // recvfromto
-	if (bind(controlfd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
-	{
-		LOG(0, 0, 0, "Error in control bind: %s\n", strerror(errno));
-		exit(1);
-	}
-
-	// Dynamic Authorization Extensions to RADIUS
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(config->radius_dae_port);
-	daefd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setsockopt(daefd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	setsockopt(daefd, SOL_IP, IP_PKTINFO, &on, sizeof(on)); // recvfromto
-	if (bind(daefd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
-	{
-		LOG(0, 0, 0, "Error in DAE bind: %s\n", strerror(errno));
-		exit(1);
-	}
-
-#ifdef LAC
 	// Tunnel to Remote LNS
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -905,10 +870,70 @@ static void initudp(void)
 		LOG(0, 0, 0, "Error in UDP REMOTE LNS bind: %s\n", strerror(errno));
 		exit(1);
 	}
-#endif
+}
 
-	// Intercept
-	snoopfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+// set up control ports
+static void initcontrol(void)
+{
+	int on = 1;
+	struct sockaddr_in addr;
+
+	// Control
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(NSCTL_PORT);
+	controlfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	setsockopt(controlfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	setsockopt(controlfd, SOL_IP, IP_PKTINFO, &on, sizeof(on)); // recvfromto
+	if (bind(controlfd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
+	{
+		LOG(0, 0, 0, "Error in control bind: %s\n", strerror(errno));
+		exit(1);
+	}
+}
+
+// set up Dynamic Authorization Extensions to RADIUS port
+static void initdae(void)
+{
+	int on = 1;
+	struct sockaddr_in addr;
+
+	// Dynamic Authorization Extensions to RADIUS
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(config->radius_dae_port);
+	daefd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	setsockopt(daefd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	setsockopt(daefd, SOL_IP, IP_PKTINFO, &on, sizeof(on)); // recvfromto
+	if (bind(daefd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
+	{
+		LOG(0, 0, 0, "Error in DAE bind: %s\n", strerror(errno));
+		exit(1);
+	}
+}
+
+// set up UDP ports
+static void initudp(int * pudpfd, in_addr_t ip_bind)
+{
+	int on = 1;
+	struct sockaddr_in addr;
+
+	// Tunnel
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(L2TPPORT);
+	addr.sin_addr.s_addr = ip_bind;
+	(*pudpfd) = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	setsockopt((*pudpfd), SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	{
+		int flags = fcntl((*pudpfd), F_GETFL, 0);
+		fcntl((*pudpfd), F_SETFL, flags | O_NONBLOCK);
+	}
+	if (bind((*pudpfd), (struct sockaddr *) &addr, sizeof(addr)) < 0)
+	{
+		LOG(0, 0, 0, "Error in UDP bind: %s\n", strerror(errno));
+		exit(1);
+	}
 }
 
 //
@@ -1233,14 +1258,11 @@ void tunnelsend(uint8_t * buf, uint16_t l, tunnelidt t)
 			LOG(3, 0, t, "Control message resend try %d\n", tunnel[t].try);
 		}
 	}
-#ifdef LAC
-	if (sendto((tunnel[t].isremotelns?udplacfd:udpfd), buf, l, 0, (void *) &addr, sizeof(addr)) < 0)
-#else
-	if (sendto(udpfd, buf, l, 0, (void *) &addr, sizeof(addr)) < 0)
-#endif
+
+	if (sendto(udpfd[tunnel[t].indexudp], buf, l, 0, (void *) &addr, sizeof(addr)) < 0)
 	{
 		LOG(0, ntohs((*(uint16_t *) (buf + 6))), t, "Error sending data out tunnel: %s (udpfd=%d, buf=%p, len=%d, dest=%s)\n",
-				strerror(errno), udpfd, buf, l, inet_ntoa(addr.sin_addr));
+				strerror(errno), udpfd[tunnel[t].indexudp], buf, l, inet_ntoa(addr.sin_addr));
 		STAT(tunnel_tx_errors);
 		return;
 	}
@@ -2208,7 +2230,7 @@ void sendipcp(sessionidt s, tunnelidt t)
 	q[4] = 3;				// ip address option
 	q[5] = 6;				// option length
 	*(in_addr_t *) (q + 6) = config->peer_address ? config->peer_address :
-				 config->iftun_address ? config->iftun_address :
+				 config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] :
 				 my_address; // send my IP
 
 	tunnelsend(buf, 10 + (q - buf), t); // send it
@@ -2272,7 +2294,6 @@ void sessionkill(sessionidt s, char *reason)
 	if (sess_local[s].radius)
 		radiusclear(sess_local[s].radius, s); // cant send clean accounting data, session is killed
 
-#ifdef LAC
 	if (session[s].forwardtosession)
 	{
 		sessionidt sess = session[s].forwardtosession;
@@ -2282,7 +2303,6 @@ void sessionkill(sessionidt s, char *reason)
 			sessionshutdown(sess, reason, CDN_ADMIN_DISC, TERM_ADMIN_RESET);
 		}
 	}
-#endif
 
 	LOG(2, s, session[s].tunnel, "Kill session %d (%s): %s\n", s, session[s].user, reason);
 	sessionclear(s);
@@ -2388,7 +2408,7 @@ static void tunnelshutdown(tunnelidt t, char *reason, int result, int error, cha
 }
 
 // read and process packet on tunnel (UDP)
-void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
+void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexudpfd)
 {
 	uint8_t *chapresponse = NULL;
 	uint16_t l = len, t = 0, s = 0, ns = 0, nr = 0;
@@ -2479,7 +2499,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 
 		if (!config->cluster_iam_master)
 		{
-			master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port);
+			master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
 			return;
 		}
 
@@ -2529,6 +2549,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 			tunnel[t].ip = ntohl(*(in_addr_t *) & addr->sin_addr);
 			tunnel[t].port = ntohs(addr->sin_port);
 			tunnel[t].window = 4; // default window
+			tunnel[t].indexudp = indexudpfd;
 			STAT(tunnel_created);
 			LOG(1, 0, t, "   New tunnel from %s:%u ID %u\n",
 				fmtaddr(htonl(tunnel[t].ip), 0), tunnel[t].port, t);
@@ -2800,7 +2821,6 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 					}
 					break;
 				case 13:    // Response
-#ifdef LAC
 					if (tunnel[t].isremotelns)
 					{
 						chapresponse = calloc(17, 1);
@@ -2808,7 +2828,6 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 						LOG(3, s, t, "received challenge response from REMOTE LNS\n");
 					}
 					else
-#endif /* LAC */
 					// Why did they send a response? We never challenge.
 					LOG(2, s, t, "   received unexpected challenge response\n");
 					break;
@@ -3054,7 +3073,6 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 				case 2:       // SCCRP
 					tunnel[t].state = TUNNELOPEN;
 					tunnel[t].lastrec = time_now;
-#ifdef LAC
 					LOG(3, s, t, "Received SCCRP\n");
 					if (main_quit != QUIT_SHUTDOWN)
 					{
@@ -3085,7 +3103,6 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 					{
 						tunnelshutdown(t, "Shutting down", 6, 0, 0);
 					}
-#endif /* LAC */
 					break;
 				case 3:       // SCCN
 					LOG(3, s, t, "Received SCCN\n");
@@ -3163,7 +3180,6 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 					}
 					return;
 				case 11:      // ICRP
-#ifdef LAC
 				LOG(3, s, t, "Received ICRP\n");
 				if (session[s].forwardtosession)
 				{
@@ -3179,7 +3195,6 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 					controladd(c, asession, t); // send the message
 					LOG(3, s, t, "Sending ICCN\n");
 				}
-#endif /* LAC */
 					break;
 				case 12:      // ICCN
 					LOG(3, s, t, "Received ICCN\n");
@@ -3195,7 +3210,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 
 					// Set multilink options before sending initial LCP packet
 					sess_local[s].mp_mrru = 1614;
-					sess_local[s].mp_epdis = ntohl(config->iftun_address ? config->iftun_address : my_address);
+					sess_local[s].mp_epdis = ntohl(config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] : my_address);
 
 					sendlcp(s, t);
 					change_state(s, lcp, RequestSent);
@@ -3253,12 +3268,11 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 			l -= 2;
 		}
 
-#ifdef LAC
 		if (session[s].forwardtosession)
 		{
 			LOG(5, s, t, "Forwarding data session to session %u\n", session[s].forwardtosession);
 			// Forward to LAC/BAS or Remote LNS session
-			lac_session_forward(buf, len, s, proto, addr->sin_addr.s_addr, addr->sin_port);
+			lac_session_forward(buf, len, s, proto, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
 			return;
 		}
 		else if (config->auth_tunnel_change_addr_src)
@@ -3273,14 +3287,13 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 				tunnel[t].ip = ntohl(addr->sin_addr.s_addr);
 			}
 		}
-#endif /* LAC */
 
 		if (s && !session[s].opened)	// Is something wrong??
 		{
 			if (!config->cluster_iam_master)
 			{
 				// Pass it off to the master to deal with..
-				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port);
+				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
 				return;
 			}
 
@@ -3292,37 +3305,37 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 		if (proto == PPPPAP)
 		{
 			session[s].last_packet = time_now;
-			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port); return; }
+			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd); return; }
 			processpap(s, t, p, l);
 		}
 		else if (proto == PPPCHAP)
 		{
 			session[s].last_packet = time_now;
-			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port); return; }
+			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd); return; }
 			processchap(s, t, p, l);
 		}
 		else if (proto == PPPLCP)
 		{
 			session[s].last_packet = time_now;
-			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port); return; }
+			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd); return; }
 			processlcp(s, t, p, l);
 		}
 		else if (proto == PPPIPCP)
 		{
 			session[s].last_packet = time_now;
-			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port); return; }
+			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd); return; }
 			processipcp(s, t, p, l);
 		}
 		else if (proto == PPPIPV6CP && config->ipv6_prefix.s6_addr[0])
 		{
 			session[s].last_packet = time_now;
-			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port); return; }
+			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd); return; }
 			processipv6cp(s, t, p, l);
 		}
 		else if (proto == PPPCCP)
 		{
 			session[s].last_packet = time_now;
-			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port); return; }
+			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd); return; }
 			processccp(s, t, p, l);
 		}
 		else if (proto == PPPIP)
@@ -3336,7 +3349,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 			session[s].last_packet = session[s].last_data = time_now;
 			if (session[s].walled_garden && !config->cluster_iam_master)
 			{
-				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port);
+				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
 				return;
 			}
 
@@ -3354,7 +3367,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 			if (!config->cluster_iam_master)
 			{
 				// The fragments reconstruction is managed by the Master.
-				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port);
+				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
 				return;
 			}
 
@@ -3371,7 +3384,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 			session[s].last_packet = session[s].last_data = time_now;
 			if (session[s].walled_garden && !config->cluster_iam_master)
 			{
-				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port);
+				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
 				return;
 			}
 
@@ -3380,7 +3393,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr)
 		else if (session[s].ppp.lcp == Opened)
 		{
 			session[s].last_packet = time_now;
-			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port); return; }
+			if (!config->cluster_iam_master) { master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd); return; }
 			protoreject(s, t, p, l, proto);
 		}
 		else
@@ -3949,13 +3962,8 @@ static int still_busy(void)
 # include "fake_epoll.h"
 #endif
 
-#ifdef LAC
-// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink, udplac, pppoedisc, pppoesess
-#define BASE_FDS	10
-#else
-// the base set of fds polled: cli, cluster, tun, udp, control, dae, netlink, pppoedisc, pppoesess
-#define BASE_FDS	9
-#endif
+// the base set of fds polled: cli, cluster, tun, udp (MAX_UDPFD), control, dae, netlink, udplac, pppoedisc, pppoesess
+#define BASE_FDS	(9 + MAX_UDPFD)
 
 // additional polled fds
 #ifdef BGP
@@ -3967,7 +3975,7 @@ static int still_busy(void)
 // main loop - gets packets on tun or udp and processes them
 static void mainloop(void)
 {
-	int i;
+	int i, j;
 	uint8_t buf[65536];
 	uint8_t *p = buf + 32; // for the hearder of the forwarded MPPP packet (see C_MPPP_FORWARD)
 						// and the forwarded pppoe session
@@ -3982,13 +3990,8 @@ static void mainloop(void)
 		exit(1);
 	}
 
-#ifdef LAC
 	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d , udplacfd=%d, pppoefd=%d, pppoesessfd=%d\n",
-		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd, udplacfd, pppoediscfd, pppoesessfd);
-#else
-	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d, pppoefd=%d, pppoesessfd=%d\n",
-		clifd, cluster_sockfd, tunfd, udpfd, controlfd, daefd, nlfd, pppoediscfd, pppoesessfd);
-#endif
+		clifd, cluster_sockfd, tunfd, udpfd[0], controlfd, daefd, nlfd, udplacfd, pppoediscfd, pppoesessfd);
 
 	/* setup our fds to poll for input */
 	{
@@ -4013,10 +4016,6 @@ static void mainloop(void)
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, tunfd, &e);
 
-		d[i].type = FD_TYPE_UDP;
-		e.data.ptr = &d[i++];
-		epoll_ctl(epollfd, EPOLL_CTL_ADD, udpfd, &e);
-
 		d[i].type = FD_TYPE_CONTROL;
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, controlfd, &e);
@@ -4029,12 +4028,6 @@ static void mainloop(void)
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, nlfd, &e);
 
-#ifdef LAC
-		d[i].type = FD_TYPE_UDPLAC;
-		e.data.ptr = &d[i++];
-		epoll_ctl(epollfd, EPOLL_CTL_ADD, udplacfd, &e);
-#endif
-
 		d[i].type = FD_TYPE_PPPOEDISC;
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, pppoediscfd, &e);
@@ -4042,6 +4035,14 @@ static void mainloop(void)
 		d[i].type = FD_TYPE_PPPOESESS;
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, pppoesessfd, &e);
+
+		for (j = 0; j < config->nbudpfd; j++)
+		{
+			d[i].type = FD_TYPE_UDP;
+			d[i].index = j;
+			e.data.ptr = &d[i++];
+			epoll_ctl(epollfd, EPOLL_CTL_ADD, udpfd[j], &e);
+		}
 	}
 
 #ifdef BGP
@@ -4103,16 +4104,12 @@ static void mainloop(void)
 			struct in_addr local;
 			socklen_t alen;
 			int c, s;
-			int udp_ready = 0;
-#ifdef LAC
-			int udplac_ready = 0;
-			int udplac_pkts = 0;
-#endif
+			int udp_ready[MAX_UDPFD + 1] = INIT_TABUDPVAR;
 			int pppoesess_ready = 0;
 			int pppoesess_pkts = 0;
 			int tun_ready = 0;
 			int cluster_ready = 0;
-			int udp_pkts = 0;
+			int udp_pkts[MAX_UDPFD + 1] = INIT_TABUDPVAR;
 			int tun_pkts = 0;
 			int cluster_pkts = 0;
 #ifdef BGP
@@ -4146,10 +4143,7 @@ static void mainloop(void)
 				// these are handled below, with multiple interleaved reads
 				case FD_TYPE_CLUSTER:	cluster_ready++; break;
 				case FD_TYPE_TUN:	tun_ready++; break;
-				case FD_TYPE_UDP:	udp_ready++; break;
-#ifdef LAC
-				case FD_TYPE_UDPLAC:	udplac_ready++; break;
-#endif
+				case FD_TYPE_UDP:	udp_ready[d->index]++; break;
 				case FD_TYPE_PPPOESESS:	pppoesess_ready++; break;
 
 				case FD_TYPE_PPPOEDISC: // pppoe discovery
@@ -4190,8 +4184,8 @@ static void mainloop(void)
 
 #ifdef BGP
 				case FD_TYPE_BGP:
-				    	bgp_events[d->index] = events[i].events;
-				    	n--;
+					bgp_events[d->index] = events[i].events;
+					n--;
 					break;
 #endif /* BGP */
 
@@ -4210,7 +4204,6 @@ static void mainloop(void)
 								exit(1);
 							}
 							else
-
 								LOG(0, 0, 0, "Got a netlink error: %s\n", strerror(-errmsg->error));
 						}
 						// else it's a ack
@@ -4222,7 +4215,7 @@ static void mainloop(void)
 				}
 
 				default:
-				    	LOG(0, 0, 0, "Unexpected fd type returned from epoll_wait: %d\n", d->type);
+					LOG(0, 0, 0, "Unexpected fd type returned from epoll_wait: %d\n", d->type);
 				}
 			}
 
@@ -4232,40 +4225,25 @@ static void mainloop(void)
 
 			for (c = 0; n && c < config->multi_read_count; c++)
 			{
-				// L2TP
-				if (udp_ready)
+				for (j = 0; j < config->nbudpfd; j++)
 				{
-					alen = sizeof(addr);
-					if ((s = recvfrom(udpfd, p, size_bufp, 0, (void *) &addr, &alen)) > 0)
+					// L2TP and L2TP REMOTE LNS
+					if (udp_ready[j])
 					{
-						processudp(p, s, &addr);
-						udp_pkts++;
-					}
-					else
-					{
-						udp_ready = 0;
-						n--;
+						alen = sizeof(addr);
+						if ((s = recvfrom(udpfd[j], p, size_bufp, 0, (void *) &addr, &alen)) > 0)
+						{
+							processudp(p, s, &addr, j);
+							udp_pkts[j]++;
+						}
+						else
+						{
+							udp_ready[j] = 0;
+							n--;
+						}
 					}
 				}
-#ifdef LAC
-				// L2TP REMOTE LNS
-				if (udplac_ready)
-				{
-					alen = sizeof(addr);
-					if ((s = recvfrom(udplacfd, p, size_bufp, 0, (void *) &addr, &alen)) > 0)
-					{
-						if (!config->disable_lac_func)
-							processudp(p, s, &addr);
 
-						udplac_pkts++;
-					}
-					else
-					{
-						udplac_ready = 0;
-						n--;
-					}
-				}
-#endif
 				// incoming IP
 				if (tun_ready)
 				{
@@ -4313,18 +4291,13 @@ static void mainloop(void)
 				}
 			}
 
-			if (udp_pkts > 1 || tun_pkts > 1 || cluster_pkts > 1)
+			if (udp_pkts[0] > 1 || tun_pkts > 1 || cluster_pkts > 1)
 				STAT(multi_read_used);
 
 			if (c >= config->multi_read_count)
 			{
-#ifdef LAC
-				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d cluster %d rmlns and %d pppoe packets\n",
-					config->multi_read_count, udp_pkts, tun_pkts, cluster_pkts, udplac_pkts, pppoesess_pkts);
-#else
 				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d cluster and %d pppoe packets\n",
-					config->multi_read_count, udp_pkts, tun_pkts, cluster_pkts, pppoesess_pkts);
-#endif
+					config->multi_read_count, udp_pkts[0], tun_pkts, cluster_pkts, pppoesess_pkts);
 				STAT(multi_read_exceeded);
 				more++;
 			}
@@ -4659,9 +4632,7 @@ static void initdata(int optdebug, char *optconfig)
 	}
 #endif /* BGP */
 
-#ifdef LAC
 	lac_initremotelnsdata();
-#endif
 }
 
 static int assign_ip_address(sessionidt s)
@@ -4948,11 +4919,7 @@ void snoop_send_packet(uint8_t *packet, uint16_t size, in_addr_t destination, ui
 
 static int dump_session(FILE **f, sessiont *s)
 {
-#ifdef LAC
 	if (!s->opened || (!s->ip && !s->forwardtosession) || !(s->cin_delta || s->cout_delta) || !*s->user || s->walled_garden)
-#else
-	if (!s->opened || !s->ip || !(s->cin_delta || s->cout_delta) || !*s->user || s->walled_garden)
-#endif
 		return 1;
 
 	if (!*f)
@@ -4978,7 +4945,7 @@ static int dump_session(FILE **f, sessiont *s)
 			"# uptime: %ld\n"
 			"# format: username ip qos uptxoctets downrxoctets\n",
 			hostname,
-			fmtaddr(config->iftun_address ? config->iftun_address : my_address, 0),
+			fmtaddr(config->iftun_n_address[tunnel[s->tunnel].indexudp] ? config->iftun_n_address[tunnel[s->tunnel].indexudp] : my_address, 0),
 			now,
 			now - basetime);
 	}
@@ -5132,7 +5099,26 @@ int main(int argc, char *argv[])
 		init_pppoe();
 		LOG(1, 0, 0, "Set up on pppoe interface %s\n", config->pppoe_if_to_bind);
 	}
-	initudp();
+
+	if (!config->nbmultiaddress)
+	{
+		config->bind_n_address[0] = config->bind_address;
+		config->nbmultiaddress++;
+	}
+	config->nbudpfd = config->nbmultiaddress;
+	for (i = 0; i < config->nbudpfd; i++)
+		initudp(&udpfd[i], config->bind_n_address[i]);
+	initlacudp();
+	config->indexlacudpfd = config->nbudpfd;
+	udpfd[config->indexlacudpfd] = udplacfd;
+	config->nbudpfd++;
+
+	initcontrol();
+	initdae();
+
+	// Intercept
+	snoopfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
 	initrad();
 	initippool();
 
@@ -5364,14 +5350,62 @@ static void update_config()
 	if (!config->radius_dae_port)
 		config->radius_dae_port = DAEPORT;
 
-#ifdef LAC
 	if(!config->bind_portremotelns)
 		config->bind_portremotelns = L2TPLACPORT;
 	if(!config->bind_address_remotelns)
 		config->bind_address_remotelns = INADDR_ANY;
-#endif
+
+	if (*config->bind_multi_address)
+	{
+		char *sip = config->bind_multi_address;
+		char *n = sip;
+		char *e = config->bind_multi_address + strlen(config->bind_multi_address);
+		config->nbmultiaddress = 0;
+
+		while (*sip && (sip < e))
+		{
+			in_addr_t ip = 0;
+			uint8_t u = 0;
+
+			while (n < e && (*n == ',' || *n == ' ')) n++;
+
+			while (n < e && (isdigit(*n) || *n == '.'))
+			{
+				 if (*n == '.')
+				 {
+					 ip = (ip << 8) + u;
+					 u = 0;
+				 }
+				 else
+					u = u * 10 + *n - '0';
+				 n++;
+			}
+			ip = (ip << 8) + u;
+			n++;
+
+			if (ip)
+			{
+				config->bind_n_address[config->nbmultiaddress] = htonl(ip);
+				config->iftun_n_address[config->nbmultiaddress] = htonl(ip);
+				config->nbmultiaddress++;
+				LOG(1, 0, 0, "Bind address %s\n", fmtaddr(htonl(ip), 0));
+			}
+
+			sip = n;
+		}
+
+		if (config->nbmultiaddress >= 1)
+		{
+			config->bind_address = config->bind_n_address[0];
+			config->iftun_address = config->bind_address;
+		}
+	}
+
 	if(!config->iftun_address)
+	{
 		config->iftun_address = config->bind_address;
+		config->iftun_n_address[0] = config->iftun_address;
+	}
 
 	if (!*config->pppoe_ac_name)
 		strncpy(config->pppoe_ac_name, DEFAULT_PPPOE_AC_NAME, sizeof(config->pppoe_ac_name) - 1);
@@ -6429,8 +6463,6 @@ int ip_filter(uint8_t *buf, int len, uint8_t filter)
     	return 0;
 }
 
-#ifdef LAC
-
 tunnelidt lac_new_tunnel()
 {
 	return new_tunnel();
@@ -6476,4 +6508,3 @@ void lac_tunnelshutdown(tunnelidt t, char *reason, int result, int error, char *
 	tunnelshutdown(t, reason, result, error, msg);
 }
 
-#endif

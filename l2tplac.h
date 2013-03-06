@@ -12,7 +12,7 @@ typedef uint16_t confrlnsidt;
 
 // l2tplac.c
 void lac_initremotelnsdata();
-int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, in_addr_t s_addr, int sin_port);
+int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, in_addr_t s_addr, int sin_port, uint16_t indexudpfd);
 int lac_conf_forwardtoremotelns(sessionidt s, char * puser);
 void lac_calc_rlns_auth(tunnelidt t, uint8_t id, uint8_t *out);
 int lac_addremotelns(char *mask, char *IP_RemoteLNS, char *Port_RemoteLNS, char *SecretRemoteLNS);

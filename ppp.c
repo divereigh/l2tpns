@@ -12,9 +12,7 @@
 #include "tbf.h"
 #include "cluster.h"
 
-#ifdef LAC
 #include "l2tplac.h"
-#endif
 #include "pppoe.h"
 
 extern tunnelt *tunnel;
@@ -105,13 +103,11 @@ void processpap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		LOG(3, s, t, "PAP login %s/%s\n", user, pass);
 	}
 
-#ifdef LAC
 	if ((!config->disable_lac_func) && lac_conf_forwardtoremotelns(s, user))
 	{
 		// Creating a tunnel/session has been started
 		return;
 	}
-#endif
 
 	if (session[s].ip || !(r = radiusnew(s)))
 	{
@@ -264,7 +260,6 @@ void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		packet.username = calloc(l + 1, 1);
 		memcpy(packet.username, p, l);
 
-#ifdef LAC
 		if ((!config->disable_lac_func) && lac_conf_forwardtoremotelns(s, packet.username))
 		{
 			free(packet.username);
@@ -272,7 +267,6 @@ void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 			// Creating a tunnel/session has been started
 			return;
 		}
-#endif
 
 		run_plugins(PLUGIN_PRE_AUTH, &packet);
 		if (!packet.continue_auth)

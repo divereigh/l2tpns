@@ -2244,7 +2244,7 @@ void processipv6in(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		return;
 
 	// no spoof
-	if (ipv4 != session[s].ip && memcmp(&config->ipv6_prefix, &ip, 8) && sessionbyipv6(ip) != s)
+	if ((ipv4 != session[s].ip || memcmp(&config->ipv6_prefix, &ip, 8)) && sessionbyipv6(ip) != s)
 	{
 		char str[INET6_ADDRSTRLEN];
 		LOG(5, s, t, "Dropping packet with spoofed IP %s\n",

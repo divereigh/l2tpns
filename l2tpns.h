@@ -66,6 +66,13 @@
 					// it's not expected to have a space for more than 10 unassembled packets = 10 * MAXBUNDLESES
 #define	MAXFRAGNUM_MASK	(MAXFRAGNUM - 1)		// Must be equal to MAXFRAGNUM-1
 
+// Multi bind address constants
+#define MAX_UDPFD 4
+#define MAX_BINDADDR MAX_UDPFD
+// 4 + 1 for the udplac
+#define INIT_TABUDPFD {-1, -1, -1, -1, -1}
+#define INIT_TABUDPVAR {0, 0, 0, 0, 0}
+
 // Constants
 #ifndef ETCDIR
 #define ETCDIR		"/etc/l2tpns"
@@ -322,14 +329,9 @@ typedef struct
 	char class[MAXCLASS];
 	uint8_t ipv6prefixlen;		// IPv6 route prefix length
 	struct in6_addr ipv6route;	// Static IPv6 route
-#ifdef LAC
 	sessionidt forwardtosession;	// LNS id_session to forward
 	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
 	char reserved[4];		// Space to expand structure without changing HB_VERSION
-#else
-	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
-	char reserved[6];		// Space to expand structure without changing HB_VERSION
-#endif
 }
 sessiont;
 
@@ -449,12 +451,9 @@ typedef struct
 	uint16_t controlc;	// outstaind messages in queue
 	controlt *controls;	// oldest message
 	controlt *controle;	// newest message
-#ifdef LAC
 	uint16_t isremotelns;	// != 0 if the tunnel is to remote LNS (== index on the conf remote lns)
-	char reserved[14];		// Space to expand structure without changing HB_VERSION
-#else
-	char reserved[16];		// Space to expand structure without changing HB_VERSION
-#endif
+	uint16_t indexudp;	// Index UDP file handle (in udpfd[])
+	char reserved[12];		// Space to expand structure without changing HB_VERSION
 }
 tunnelt;
 
@@ -765,19 +764,23 @@ typedef struct
 	int idle_echo_timeout; // Time between last packet seen and
 						   // Drop sessions who have not responded within IDLE_ECHO_TIMEOUT seconds
 	in_addr_t iftun_address;
-#ifdef LAC
 	int disable_lac_func;
 	int auth_tunnel_change_addr_src;
 	int highest_rlnsid;
 	uint16_t bind_portremotelns;
 	in_addr_t bind_address_remotelns;
-#endif
 	char pppoe_if_to_bind[IFNAMSIZ];	// Name pppoe interface to bind
 	char pppoe_service_name[64];	// pppoe service name
 	char pppoe_ac_name[64];
 	uint8_t pppoe_hwaddr[ETH_ALEN];	// MAC addr of interface pppoe to bind
 	int disable_sending_hello; // Disable l2tp sending HELLO message for Apple compatibility.
 	int disable_no_spoof; // Disable no spoof (permit load balancing client --> internet)
+	int nbudpfd; // number UDP file handle
+	int nbmultiaddress; // number multi address to bind
+	int indexlacudpfd;	// Index UDP LAC file handle (in udpfd[])
+	in_addr_t bind_n_address[MAX_BINDADDR];
+	in_addr_t iftun_n_address[MAX_BINDADDR];
+	char bind_multi_address[256];
 } configt;
 
 enum config_typet { INT, STRING, UNSIGNED_LONG, SHORT, BOOL, IPv4, IPv6 };
@@ -913,9 +916,7 @@ void radiusretry(uint16_t r);
 uint16_t radiusnew(sessionidt s);
 void radiusclear(uint16_t r, sessionidt s);
 void processdae(uint8_t *buf, int len, struct sockaddr_in *addr, int alen, struct in_addr *local);
-#ifdef LAC
 int rad_tunnel_pwdecode(uint8_t *pl2tpsecret, size_t *pl2tpsecretlen, const char *radiussecret, const uint8_t * auth);
-#endif
 
 // l2tpns.c
 clockt backoff(uint8_t try);
@@ -935,7 +936,7 @@ int tun_write(uint8_t *data, int size);
 void adjust_tcp_mss(sessionidt s, tunnelidt t, uint8_t *buf, int len, uint8_t *tcp);
 void sendipcp(sessionidt s, tunnelidt t);
 void sendipv6cp(sessionidt s, tunnelidt t);
-void processudp(uint8_t *buf, int len, struct sockaddr_in *addr);
+void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexudpfd);
 void processipout(uint8_t *buf, int len);
 void snoop_send_packet(uint8_t *packet, uint16_t size, in_addr_t destination, uint16_t port);
 int find_filter(char const *name, size_t len);
@@ -943,13 +944,11 @@ int ip_filter(uint8_t *buf, int len, uint8_t filter);
 int cmd_show_ipcache(struct cli_def *cli, char *command, char **argv, int argc);
 int cmd_show_hist_idle(struct cli_def *cli, char *command, char **argv, int argc);
 int cmd_show_hist_open(struct cli_def *cli, char *command, char **argv, int argc);
-#ifdef LAC
 tunnelidt lac_new_tunnel();
 void lac_tunnelclear(tunnelidt t);
 void lac_send_SCCRQ(tunnelidt t, uint8_t * auth, unsigned int auth_len);
 void lac_send_ICRQ(tunnelidt t, sessionidt s);
 void lac_tunnelshutdown(tunnelidt t, char *reason, int result, int error, char *msg);
-#endif
 
 #undef LOG
 #undef LOG_HEX
@@ -1009,13 +1008,10 @@ struct event_data {
 		FD_TYPE_RADIUS,
 		FD_TYPE_BGP,
 		FD_TYPE_NETLINK,
-#ifdef LAC
-		FD_TYPE_UDPLAC,
-#endif
 		FD_TYPE_PPPOEDISC,
 		FD_TYPE_PPPOESESS
 	} type;
-	int index; // for RADIUS, BGP
+	int index; // for RADIUS, BGP, UDP
 };
 
 #define TIME (config->current_time)

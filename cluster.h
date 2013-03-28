@@ -26,11 +26,7 @@
 #define C_MPPP_FORWARD	19	// MPPP Forwarded packet..
 #define C_PPPOE_FORWARD	20	// PPPOE Forwarded packet..
 
-#ifdef LAC
 #define HB_VERSION		7	// Protocol version number..
-#else
-#define HB_VERSION		6	// Protocol version number..
-#endif
 #define HB_MAX_SEQ		(1<<30)	// Maximum sequence number. (MUST BE A POWER OF 2!)
 #define HB_HISTORY_SIZE		64	// How many old heartbeats we remember?? (Must be a factor of HB_MAX_SEQ)
 
@@ -86,7 +82,7 @@ int processcluster(uint8_t *buf, int size, in_addr_t addr);
 int cluster_send_session(int sid);
 int cluster_send_bundle(int bid);
 int cluster_send_tunnel(int tid);
-int master_forward_packet(uint8_t *data, int size, in_addr_t addr, int port);
+int master_forward_packet(uint8_t *data, int size, in_addr_t addr, uint16_t port, uint16_t indexudp);
 int master_forward_dae_packet(uint8_t *data, int size, in_addr_t addr, int port);
 int master_throttle_packet(int tid, uint8_t *data, int size);
 int master_garden_packet(sessionidt s, uint8_t *data, int size);

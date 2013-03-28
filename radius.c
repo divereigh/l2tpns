@@ -19,9 +19,7 @@
 #include "util.h"
 #include "cluster.h"
 
-#ifdef LAC
 #include "l2tplac.h"
-#endif
 #include "pppoe.h"
 
 extern radiust *radius;
@@ -537,9 +535,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 	uint8_t routes = 0;
 	int r_code;
 	int r_id;
-#ifdef LAC
 	int OpentunnelReq = 0;
-#endif
 
 	CSTAT(processrad);
 
@@ -641,11 +637,10 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				// Extract IP, routes, etc
 				uint8_t *p = buf + 20;
 				uint8_t *e = buf + len;
-#ifdef LAC
 				uint8_t tag;
 				uint8_t strtemp[256];
 				lac_reset_rad_tag_tunnel_ctxt();
-#endif
+
 				for (; p + 2 <= e && p[1] && p + p[1] <= e; p += p[1])
 				{
 					if (*p == 26 && p[1] >= 7)
@@ -840,7 +835,6 @@ void processrad(uint8_t *buf, int len, char socket_index)
 							session[s].classlen = MAXCLASS;
 						memcpy(session[s].class, p + 2, session[s].classlen);
 					}
-#ifdef LAC
 					else if (*p == 64)
 					{
 						// Tunnel-Type
@@ -929,7 +923,6 @@ void processrad(uint8_t *buf, int len, char socket_index)
 						// Fill context
 						lac_set_rad_tag_tunnel_assignment_id(tag, (char *) strtemp);
 					}
-#endif
 				}
 			}
 			else if (r_code == AccessReject)
@@ -939,7 +932,6 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				break;
 			}
 
-#ifdef LAC
 			if ((!config->disable_lac_func) && OpentunnelReq)
 			{
 				char assignment_id[256];
@@ -996,7 +988,6 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				LOG(3, s, session[s].tunnel, "   PAP User %s authentication %s.\n", session[s].user,
 						(r_code == AccessAccept) ? "allowed" : "denied");
 			}
-#endif
 
 			if (!session[s].dns1 && config->default_dns1)
 			{
@@ -1341,7 +1332,6 @@ void processdae(uint8_t *buf, int len, struct sockaddr_in *addr, int alen, struc
 		LOG(0, 0, 0, "Error sending DAE response packet: %s\n", strerror(errno));
 }
 
-#ifdef LAC
 // Decrypte the encrypted Tunnel Password.
 // Defined in RFC-2868.
 // the pl2tpsecret buffer must set to 256 characters.
@@ -1432,4 +1422,3 @@ int rad_tunnel_pwdecode(uint8_t *pl2tpsecret, size_t *pl2tpsecretlen,
 
 	return decodedlen;
 };
-#endif /* LAC */

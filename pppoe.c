@@ -902,7 +902,6 @@ void process_pppoe_disc(uint8_t *pack, int size)
 	}
 }
 
-#ifdef LAC
 // Forward from pppoe to l2tp remote LNS
 static void pppoe_forwardto_session_rmlns(uint8_t *pack, int size, sessionidt sess, uint16_t proto)
 {
@@ -1036,7 +1035,6 @@ void pppoe_forwardto_session_pppoe(uint8_t *pack, int size, sessionidt sess, uin
 
 	tunnelsend(p, lpppoe, t); // send it....
 }
-#endif
 
 void process_pppoe_sess(uint8_t *pack, int size)
 {
@@ -1101,13 +1099,11 @@ void process_pppoe_sess(uint8_t *pack, int size)
 		lppp -= 2;
 	}
 
-#ifdef LAC
 	if (session[sid].forwardtosession)
 	{	// Must be forwaded to a remote lns tunnel l2tp
 		pppoe_forwardto_session_rmlns(pack, size, sid, proto);
 		return;
 	}
-#endif
 
 	if (proto == PPPPAP)
 	{

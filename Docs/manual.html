@@ -265,6 +265,24 @@ from the address of "bind_address" (For use in cases of specific configuration).
 If no address is given to iftun_address and bind_address, 1.1.1.1 is used.
 </LI>
 
+<LI><B>bind_multi_address</B> (ip address)<BR>
+This parameter permit to listen several addresss of the l2tp udp protocol
+(and set several address to the tun interface).
+<BR>
+WHEN this parameter is set, It OVERWRITE the parameters "bind_address"
+and "iftun_address".
+<BR>
+these can be interesting when you want do load-balancing in cluster mode
+of the uploaded from the LAC. For example you can set a bgp.prepend(MY_AS)
+for Address1 on LNS1 and a bgp.prepend(MY_AS) for Address2 on LNS2
+(see BGP AS-path prepending).
+<BR>
+example of use with 2 address:
+<BR>
+set bind_multi_address "64.14.13.41, 64.14.13.42"
+
+</LI>
+
 <LI><B>tundevicename</B> (string)<BR>
 Name of the tun interface (default: "tun0").
 </LI>

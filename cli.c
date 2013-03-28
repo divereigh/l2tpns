@@ -31,9 +31,7 @@
 #ifdef BGP
 #include "bgp.h"
 #endif
-#ifdef LAC
 #include "l2tplac.h"
-#endif
 
 extern tunnelt *tunnel;
 extern bundlet *bundle;
@@ -102,10 +100,8 @@ static int cmd_remove_plugin(struct cli_def *cli, char *command, char **argv, in
 static int cmd_uptime(struct cli_def *cli, char *command, char **argv, int argc);
 static int cmd_shutdown(struct cli_def *cli, char *command, char **argv, int argc);
 static int cmd_reload(struct cli_def *cli, char *command, char **argv, int argc);
-#ifdef LAC
 static int cmd_setforward(struct cli_def *cli, char *command, char **argv, int argc);
 static int cmd_show_rmtlnsconf(struct cli_def *cli, char *command, char **argv, int argc);
-#endif
 
 static int regular_stuff(struct cli_def *cli);
 
@@ -156,9 +152,7 @@ void init_cli()
 	cli_register_command(cli, c, "pool", cmd_show_pool, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show the IP address allocation pool");
 	cli_register_command(cli, c, "radius", cmd_show_radius, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show active radius queries");
 	cli_register_command(cli, c, "running-config", cmd_show_run, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Show the currently running configuration");
-#ifdef LAC
 	cli_register_command(cli, c, "remotelns-conf", cmd_show_rmtlnsconf, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Show a list of remote LNS configuration");
-#endif
 	cli_register_command(cli, c, "session", cmd_show_session, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show a list of sessions or details for a single session");
 	cli_register_command(cli, c, "tbf", cmd_show_tbf, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "List all token bucket filters in use");
 	cli_register_command(cli, c, "throttle", cmd_show_throttle, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "List all throttled sessions and associated TBFs");
@@ -231,9 +225,7 @@ void init_cli()
 
 	cli_register_command(cli, NULL, "set", cmd_set, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Set a configuration variable");
 
-#ifdef LAC
 	cli_register_command(cli, NULL, "setforward", cmd_setforward, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Set the Remote LNS Forward");
-#endif
 
 	c = cli_register_command(cli, NULL, "ip", NULL, PRIVILEGE_PRIVILEGED, MODE_CONFIG, NULL);
 	cli_register_command(cli, c, "access-list", cmd_ip_access_list, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Add named access-list");
@@ -542,15 +534,9 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 	}
 
 	// Show Summary
-#ifdef LAC
 	cli_print(cli, "%5s %7s %4s %-32s %-15s %s %s %s %s %10s %10s %10s %4s %10s %-18s %s",
-#else
-	cli_print(cli, "%5s %4s %-32s %-15s %s %s %s %s %10s %10s %10s %4s %10s %-15s %s",
-#endif
 			"SID",
-#ifdef LAC
 			"LkToSID",
-#endif
 			"TID",
 			"Username",
 			"IP",
@@ -563,11 +549,7 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 			"uploaded",
 			"idle",
 			"Rem.Time",
-#ifdef LAC
 			"LAC(L)/RLNS(R)/PPPOE(P)",
-#else
-			"LAC(L)/PPPOE(P)",
-#endif
 			"CLI");
 
 	for (i = 1; i < MAXSESSION; i++)
@@ -578,15 +560,9 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 			rem_time = session[i].timeout ? (session[i].timeout - bundle[session[i].bundle].online_time) : 0;
 		else
 			rem_time = session[i].timeout ? (session[i].timeout - (time_now-session[i].opened)) : 0;
-#ifdef LAC
 		cli_print(cli, "%5d %7d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %3s%-20s %s",
-#else
-		cli_print(cli, "%5d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %3s%-20s %s",
-#endif
 				i,
-#ifdef LAC
 				session[i].forwardtosession,
-#endif
 				session[i].tunnel,
 				session[i].user[0] ? session[i].user : "*",
 				fmtaddr(htonl(session[i].ip), 0),
@@ -599,11 +575,7 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 				(unsigned long)session[i].cin,
 				abs(time_now - (session[i].last_packet ? session[i].last_packet : time_now)),
 				(unsigned long)(rem_time),
-#ifdef LAC
 				(session[i].tunnel == TUNNEL_ID_PPPOE)?"(P)":(tunnel[session[i].tunnel].isremotelns?"(R)":"(L)"),
-#else
-				(session[i].tunnel == TUNNEL_ID_PPPOE)?"(P)":"(L)",
-#endif
 				(session[i].tunnel == TUNNEL_ID_PPPOE)?fmtMacAddr(session[i].src_hwaddr):fmtaddr(htonl(tunnel[session[i].tunnel].ip), 1),
 				session[i].calling[0] ? session[i].calling : "*");
 	}
@@ -694,11 +666,7 @@ static int cmd_show_tunnels(struct cli_def *cli, char *command, char **argv, int
 				fmtaddr(htonl(tunnel[i].ip), 0),
 				states[tunnel[i].state],
 				sessions
-#ifdef LAC
 				,(i == TUNNEL_ID_PPPOE)?"Tunnel pppoe":(tunnel[i].isremotelns?"Tunnel To Remote LNS":"Tunnel To LAC")
-#else
-				,(i == TUNNEL_ID_PPPOE)?"Tunnel pppoe":"Tunnel To LAC"
-#endif
 				);
 	}
 
@@ -1309,13 +1277,11 @@ static int cmd_drop_session(struct cli_def *cli, char *command, char **argv, int
 			cli_print(cli, "Dropping session %d", s);
 			cli_session_actions[s].action |= CLI_SESS_KILL;
 		}
-#ifdef LAC
 		else if (session[s].forwardtosession && session[s].opened && !session[s].die)
 		{
 			cli_print(cli, "Dropping session %d", s);
 			cli_session_actions[s].action |= CLI_SESS_KILL;
 		}
-#endif
 		else
 		{
 			cli_error(cli, "Session %d is not active.", s);
@@ -3106,7 +3072,7 @@ static int cmd_show_access_list(struct cli_def *cli, char *command, char **argv,
 		}
 
 		if (i)
-			cli_print(cli, "");
+			cli_print(cli, " ");
 
 		cli_print(cli, "%s IP access list %s",
 			ip_filters[f].extended ? "Extended" : "Standard",
@@ -3143,8 +3109,6 @@ static int cmd_reload(struct cli_def *cli, char *command, char **argv, int argc)
 	kill(getppid(), SIGHUP);
 	return CLI_OK;
 }
-
-#ifdef LAC
 
 static int cmd_setforward(struct cli_def *cli, char *command, char **argv, int argc)
 {
@@ -3216,4 +3180,3 @@ static int cmd_show_rmtlnsconf(struct cli_def *cli, char *command, char **argv, 
 
 	return CLI_OK;
 }
-#endif

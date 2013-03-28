@@ -305,10 +305,11 @@ static int _forward_packet(uint8_t *data, int size, in_addr_t addr, int port, in
 // The master just processes the payload as if it had
 // received it off the tun device.
 //(note: THIS ROUTINE WRITES TO pack[-6]).
-int master_forward_packet(uint8_t *data, int size, in_addr_t addr, int port)
+int master_forward_packet(uint8_t *data, int size, in_addr_t addr, uint16_t port, uint16_t indexudp)
 {
 	uint8_t *p = data - (3 * sizeof(uint32_t));
 	uint8_t *psave = p;
+	uint32_t indexandport = port | ((indexudp << 16) & 0xFFFF0000);
 
 	if (!config->cluster_master_address) // No election has been held yet. Just skip it.
 		return -1;
@@ -316,7 +317,7 @@ int master_forward_packet(uint8_t *data, int size, in_addr_t addr, int port)
 	LOG(4, 0, 0, "Forwarding packet from %s to master (size %d)\n", fmtaddr(addr, 0), size);
 
 	STAT(c_forwarded);
-	add_type(&p, C_FORWARD, addr, (uint8_t *) &port, sizeof(port)); // ick. should be uint16_t
+	add_type(&p, C_FORWARD, addr, (uint8_t *) &indexandport, sizeof(indexandport));
 
 	return peer_send_data(config->cluster_master_address, psave, size + (3 * sizeof(uint32_t)));
 }
@@ -1503,16 +1504,9 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 	int i, type;
 	int hb_ver = more;
 
-#ifdef LAC
 #if HB_VERSION != 7
 # error "need to update cluster_process_heartbeat()"
 #endif
-#else
-#if HB_VERSION != 6
-# error "need to update cluster_process_heartbeat()"
-#endif
-#endif
-
 
 	// we handle versions 5 through 7
 	if (hb_ver < 5 || hb_ver > HB_VERSION) {
@@ -1726,12 +1720,8 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 				size = rle_decompress((uint8_t **) &p, s, c, sizeof(c));
 				s -= (p - orig_p);
 
-#ifdef LAC
 				if ( ((hb_ver >= HB_VERSION) && (size != sizeof(tunnelt))) ||
 					 ((hb_ver < HB_VERSION) && (size > sizeof(tunnelt))) )
-#else
-				if (size != sizeof(tunnelt) )
-#endif
 				{ // Ouch! Very very bad!
 					LOG(0, 0, 0, "DANGER: Received a CTUNNEL that didn't decompress correctly!\n");
 						// Now what? Should exit! No-longer up to date!
@@ -1854,9 +1844,11 @@ int processcluster(uint8_t *data, int size, in_addr_t addr)
 		else
 		{
 			struct sockaddr_in a;
+			uint16_t indexudp;
 			a.sin_addr.s_addr = more;
 
-			a.sin_port = *(int *) p;
+			a.sin_port = (*(int *) p) & 0xFFFF;
+			indexudp = ((*(int *) p) >> 16) & 0xFFFF;
 			s -= sizeof(int);
 			p += sizeof(int);
 
@@ -1871,7 +1863,7 @@ int processcluster(uint8_t *data, int size, in_addr_t addr)
 				processdae(p, s, &a, sizeof(a), &local);
 			}
 			else
-				processudp(p, s, &a);
+				processudp(p, s, &a, indexudp);
 
 			return 0;
 		}

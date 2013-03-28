@@ -295,6 +295,7 @@ static int lac_create_tunnelsession(tunnelidt t, sessionidt s, confrlnsidt i_con
 		tunnel[t].port = pconfigrlns[i_conf].port;
 		tunnel[t].window = 4; // default window
 		tunnel[t].isremotelns = i_conf;
+		tunnel[t].indexudp = config->indexlacudpfd;
 		STAT(tunnel_created);
 
 		random_data(pconfigrlns[i_conf].auth, sizeof(pconfigrlns[i_conf].auth));
@@ -449,7 +450,7 @@ void lac_calc_rlns_auth(tunnelidt t, uint8_t id, uint8_t *out)
 }
 
 // Forward session to LAC or Remote LNS
-int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, in_addr_t s_addr, int sin_port)
+int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, in_addr_t s_addr, int sin_port, uint16_t indexudpfd)
 {
 	uint16_t t = 0, s = 0;
 	uint8_t *p = buf + 2; // First word L2TP options
@@ -482,7 +483,7 @@ int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, 
 			 (proto == PPPCCP) )
 		{
 			session[sess].last_packet = time_now;
-			master_forward_packet(buf, len, s_addr, sin_port);
+			master_forward_packet(buf, len, s_addr, sin_port, indexudpfd);
 			return 1;
 		}
 	}

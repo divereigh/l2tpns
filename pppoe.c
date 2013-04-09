@@ -502,20 +502,27 @@ static void pppoe_recv_PADI(uint8_t *pack, int size)
 		return;
 
 	len = ntohs(hdr->length);
-	for (n = 0; n < len; n += sizeof(*tag) + ntohs(tag->tag_len)) {
+	for (n = 0; n < len; n += sizeof(*tag) + ntohs(tag->tag_len))
+	{
 		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
 		if (n + sizeof(*tag) + ntohs(tag->tag_len) > len)
 			return;
-		switch (ntohs(tag->tag_type)) {
+		switch (ntohs(tag->tag_type))
+		{
 			case TAG_END_OF_LIST:
 				break;
 			case TAG_SERVICE_NAME:
-				if (*config->pppoe_service_name && tag->tag_len)
+				if (config->pppoe_only_equal_svc_name && *config->pppoe_service_name && !tag->tag_len)
+				{
+					break;
+				}
+				else if (*config->pppoe_service_name && tag->tag_len)
 				{
 					if (ntohs(tag->tag_len) != strlen(config->pppoe_service_name))
 						break;
 					if (memcmp(tag->tag_data, config->pppoe_service_name, ntohs(tag->tag_len)))
 						break;
+					service_name_tag = tag;
 					service_match = 1;
 				}
 				else

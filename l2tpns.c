@@ -185,6 +185,7 @@ config_descriptt config_values[] = {
 	CONFIG("disable_sending_hello", disable_sending_hello, BOOL),
 	CONFIG("disable_no_spoof", disable_no_spoof, BOOL),
 	CONFIG("bind_multi_address", bind_multi_address, STRING),
+	CONFIG("pppoe_only_equal_svc_name", pppoe_only_equal_svc_name, BOOL),
 	{ NULL, 0, 0, 0 }
 };
 

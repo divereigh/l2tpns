@@ -773,6 +773,7 @@ typedef struct
 	char pppoe_service_name[64];	// pppoe service name
 	char pppoe_ac_name[64];
 	uint8_t pppoe_hwaddr[ETH_ALEN];	// MAC addr of interface pppoe to bind
+	int pppoe_only_equal_svc_name; // Accept only PADI with service-name equal to server
 	int disable_sending_hello; // Disable l2tp sending HELLO message for Apple compatibility.
 	int disable_no_spoof; // Disable no spoof (permit load balancing client --> internet)
 	int nbudpfd; // number UDP file handle

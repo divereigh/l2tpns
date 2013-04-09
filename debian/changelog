@@ -1,3 +1,10 @@
+l2tpns (2.2.1-2fdn3.7) unstable; urgency=low
+
+  * Adding the possibility to listening multiple IP L2TP Tunnels
+  * Removing LAC flag.
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Thu, 28 Mar 2013 10:50:00 +0100
+
 l2tpns (2.2.1-2fdn3.6) unstable; urgency=low
 
   * Fix Warning: dereferencing type-punned pointer will break strict...

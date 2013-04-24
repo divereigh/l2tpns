@@ -316,8 +316,13 @@ every connected use will be dumped to a file in this directory.  Each
 file dumped begins with a header, where each line is prefixed by #. 
 Following the header is a single line for every connected user, fields
 separated by a space.<BR> The fields are username, ip, qos,
-uptxoctets, downrxoctets.  The qos field is 1 if a standard user, and
-2 if the user is throttled.
+uptxoctets, downrxoctets, origin (optional). The qos field is 1 if a standard user, and
+2 if the user is throttled. The origin field is dump if account_all_origin is set to true
+(origin value: L=LAC data, R=Remote LNS data, P=PPPOE data).
+</LI>
+
+<LI><B>account_all_origin</B> (boolean)<BR>
+If set to true, all origin of the usage is dumped to the accounting file (LAC+Remote LNS+PPPOE)(default false).
 </LI>
 
 <LI><B>setuid</B> (int)<BR>

@@ -152,6 +152,7 @@ config_descriptt config_values[] = {
 	CONFIG("throttle_speed", rl_rate, UNSIGNED_LONG),
 	CONFIG("throttle_buckets", num_tbfs, INT),
 	CONFIG("accounting_dir", accounting_dir, STRING),
+	CONFIG("account_all_origin", account_all_origin, BOOL),
 	CONFIG("dump_speed", dump_speed, BOOL),
 	CONFIG("multi_read_count", multi_read_count, INT),
 	CONFIG("scheduler_fifo", scheduler_fifo, BOOL),
@@ -4939,6 +4940,21 @@ static int dump_session(FILE **f, sessiont *s)
 		}
 
 		LOG(3, 0, 0, "Dumping accounting information to %s\n", filename);
+		if(config->account_all_origin)
+		{
+		fprintf(*f, "# dslwatch.pl dump file V1.01\n"
+			"# host: %s\n"
+			"# endpoint: %s\n"
+			"# time: %ld\n"
+			"# uptime: %ld\n"
+			"# format: username ip qos uptxoctets downrxoctets origin(L=LAC, R=Remote LNS, P=PPPOE)\n",
+			hostname,
+			fmtaddr(config->iftun_n_address[tunnel[s->tunnel].indexudp] ? config->iftun_n_address[tunnel[s->tunnel].indexudp] : my_address, 0),
+			now,
+			now - basetime);
+		}
+		else
+		{
 		fprintf(*f, "# dslwatch.pl dump file V1.01\n"
 			"# host: %s\n"
 			"# endpoint: %s\n"
@@ -4949,15 +4965,29 @@ static int dump_session(FILE **f, sessiont *s)
 			fmtaddr(config->iftun_n_address[tunnel[s->tunnel].indexudp] ? config->iftun_n_address[tunnel[s->tunnel].indexudp] : my_address, 0),
 			now,
 			now - basetime);
+		}
 	}
 
 	LOG(4, 0, 0, "Dumping accounting information for %s\n", s->user);
+	if(config->account_all_origin)
+	{
+	fprintf(*f, "%s %s %d %u %u %s\n",
+		s->user,						// username
+		fmtaddr(htonl(s->ip), 0),				// ip
+		(s->throttle_in || s->throttle_out) ? 2 : 1,		// qos
+		(uint32_t) s->cin_delta,				// uptxoctets
+		(uint32_t) s->cout_delta,				// downrxoctets
+		(s->tunnel == TUNNEL_ID_PPPOE)?"P":(tunnel[s->tunnel].isremotelns?"R":"L"));	// Origin
+	}
+	else if (!tunnel[s->tunnel].isremotelns && (s->tunnel != TUNNEL_ID_PPPOE))
+	{
 	fprintf(*f, "%s %s %d %u %u\n",
 		s->user,						// username
 		fmtaddr(htonl(s->ip), 0),				// ip
 		(s->throttle_in || s->throttle_out) ? 2 : 1,		// qos
 		(uint32_t) s->cin_delta,				// uptxoctets
 		(uint32_t) s->cout_delta);				// downrxoctets
+	}
 
 	s->cin_delta = s->cout_delta = 0;
 

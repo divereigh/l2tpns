@@ -696,6 +696,7 @@ typedef struct
 	int		num_tbfs;			// number of throttle buckets
 
 	char		accounting_dir[128];
+	int		account_all_origin; // Accouting all origin (LAC data + Remote LNS Data + PPPOE data)
 	in_addr_t	bind_address;
 	in_addr_t	peer_address;
 	int		send_garp;			// Set to true to garp for vip address on startup

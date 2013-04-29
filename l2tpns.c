@@ -2412,7 +2412,8 @@ static void tunnelshutdown(tunnelidt t, char *reason, int result, int error, cha
 // read and process packet on tunnel (UDP)
 void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexudpfd)
 {
-	uint8_t *chapresponse = NULL;
+	uint8_t *sendchalresponse = NULL;
+	uint8_t *recvchalresponse = NULL;
 	uint16_t l = len, t = 0, s = 0, ns = 0, nr = 0;
 	uint8_t *p = buf + 2;
 
@@ -2816,17 +2817,20 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 						tunnel[t].window = 1; // window of 0 is silly
 					LOG(4, s, t, "   rx window = %u\n", tunnel[t].window);
 					break;
-				case 11:	// Challenge
+				case 11:	// Request Challenge
 					{
 						LOG(4, s, t, "   LAC requested CHAP authentication for tunnel\n");
-						build_chap_response(b, 2, n, &chapresponse);
+						if (message == 1)
+							build_chap_response(b, 2, n, &sendchalresponse);
+						else if (message == 2)
+							build_chap_response(b, 3, n, &sendchalresponse);
 					}
 					break;
-				case 13:    // Response
+				case 13:    // receive challenge Response
 					if (tunnel[t].isremotelns)
 					{
-						chapresponse = calloc(17, 1);
-						memcpy(chapresponse, b, (n < 17) ? n : 16);
+						recvchalresponse = calloc(17, 1);
+						memcpy(recvchalresponse, b, (n < 17) ? n : 16);
 						LOG(3, s, t, "received challenge response from REMOTE LNS\n");
 					}
 					else
@@ -3063,7 +3067,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 						control16(c, 2, version, 1); // protocol version
 						control32(c, 3, 3, 1); // framing
 						controls(c, 7, hostname, 1); // host name
-						if (chapresponse) controlb(c, 13, chapresponse, 16, 1); // Challenge response
+						if (sendchalresponse) controlb(c, 13, sendchalresponse, 16, 1); // Send Challenge response
 						control16(c, 9, t, 1); // assigned tunnel
 						controladd(c, 0, t); // send the resply
 					}
@@ -3078,13 +3082,13 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 					LOG(3, s, t, "Received SCCRP\n");
 					if (main_quit != QUIT_SHUTDOWN)
 					{
-						if (tunnel[t].isremotelns && chapresponse)
+						if (tunnel[t].isremotelns && recvchalresponse)
 						{
 							hasht hash;
 
 							lac_calc_rlns_auth(t, 2, hash); // id = 2 (SCCRP)
 							// check authenticator
-							if (memcmp(hash, chapresponse, 16) == 0)
+							if (memcmp(hash, recvchalresponse, 16) == 0)
 							{
 								LOG(3, s, t, "sending SCCCN to REMOTE LNS\n");
 								controlt *c = controlnew(3); // sending SCCCN
@@ -3092,6 +3096,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 								controls(c, 8, Vendor_name, 1); // Vendor name
 								control16(c, 2, version, 1); // protocol version
 								control32(c, 3, 3, 1); // framing Capabilities
+								if (sendchalresponse) controlb(c, 13, sendchalresponse, 16, 1); // Challenge response
 								control16(c, 9, t, 1); // assigned tunnel
 								controladd(c, 0, t); // send
 							}
@@ -3234,7 +3239,8 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 						LOG(1, s, t, "Unknown message type %u\n", message);
 					break;
 				}
-			if (chapresponse) free(chapresponse);
+			if (sendchalresponse) free(sendchalresponse);
+			if (recvchalresponse) free(recvchalresponse);
 			cluster_send_tunnel(t);
 		}
 		else

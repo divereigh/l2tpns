@@ -1,3 +1,11 @@
+l2tpns (2.2.1-2fdn3.8) unstable; urgency=low
+
+  * Fix: send SCCCN requested challenge response.
+  * add accounting parameter account_all_origin.
+  * Fix service_name management and add pppoe_only_equal_svc_name parameter.
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Tue, 30 Apr 2013 16:02:33 +0200
+
 l2tpns (2.2.1-2fdn3.7) unstable; urgency=low
 
   * Adding the possibility to listening multiple IP L2TP Tunnels

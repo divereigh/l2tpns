@@ -187,6 +187,7 @@ config_descriptt config_values[] = {
 	CONFIG("disable_no_spoof", disable_no_spoof, BOOL),
 	CONFIG("bind_multi_address", bind_multi_address, STRING),
 	CONFIG("pppoe_only_equal_svc_name", pppoe_only_equal_svc_name, BOOL),
+	CONFIG("multi_hostname", multi_hostname, STRING),
 	{ NULL, 0, 0, 0 }
 };
 
@@ -3066,7 +3067,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 						controlt *c = controlnew(2); // sending SCCRP
 						control16(c, 2, version, 1); // protocol version
 						control32(c, 3, 3, 1); // framing
-						controls(c, 7, hostname, 1); // host name
+						controls(c, 7, config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname, 1); // host name
 						if (sendchalresponse) controlb(c, 13, sendchalresponse, 16, 1); // Send Challenge response
 						control16(c, 9, t, 1); // assigned tunnel
 						controladd(c, 0, t); // send the resply
@@ -3092,7 +3093,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 							{
 								LOG(3, s, t, "sending SCCCN to REMOTE LNS\n");
 								controlt *c = controlnew(3); // sending SCCCN
-								controls(c, 7, hostname, 1); // host name
+								controls(c, 7, config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname, 1); // host name
 								controls(c, 8, Vendor_name, 1); // Vendor name
 								control16(c, 2, version, 1); // protocol version
 								control32(c, 3, 3, 1); // framing Capabilities
@@ -5426,6 +5427,8 @@ static void update_config()
 				config->iftun_n_address[config->nbmultiaddress] = htonl(ip);
 				config->nbmultiaddress++;
 				LOG(1, 0, 0, "Bind address %s\n", fmtaddr(htonl(ip), 0));
+
+				if (config->nbmultiaddress >= MAX_BINDADDR) break;
 			}
 
 			sip = n;
@@ -5442,6 +5445,39 @@ static void update_config()
 	{
 		config->iftun_address = config->bind_address;
 		config->iftun_n_address[0] = config->iftun_address;
+	}
+
+	if (*config->multi_hostname)
+	{
+		char *shost = config->multi_hostname;
+		char *n = shost;
+		char *e = config->multi_hostname + strlen(config->multi_hostname);
+		config->nbmultihostname = 0;
+
+		while (*shost && (shost < e))
+		{
+			while ((n < e) && (*n == ' ' || *n == '\t')) n++;
+
+			i = 0;
+			while (n < e && (*n != ',') && (*n != '\t'))
+			{
+				config->multi_n_hostname[config->nbmultihostname][i] = *n;
+				n++;i++;
+			}
+			if (i > 0)
+			{
+				config->multi_n_hostname[config->nbmultihostname][i] = 0;
+				LOG(1, 0, 0, "Bind Hostname %s\n", config->multi_n_hostname[config->nbmultihostname]);
+				config->nbmultihostname++;
+				if (config->nbmultihostname >= MAX_NBHOSTNAME) break;
+			}
+		}
+
+		if (config->nbmultihostname >= 1)
+		{
+			strcpy(hostname, config->multi_n_hostname[0]);
+			strcpy(config->hostname, hostname);
+		}
 	}
 
 	if (!*config->pppoe_ac_name)
@@ -6518,7 +6554,7 @@ void lac_send_SCCRQ(tunnelidt t, uint8_t * auth, unsigned int auth_len)
 
 	// Sent SCCRQ - Start Control Connection Request
 	controlt *c = controlnew(1); // sending SCCRQ
-	controls(c, 7, hostname, 1); // host name
+	controls(c, 7, config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname, 1); // host name
 	controls(c, 8, Vendor_name, 1); // Vendor name
 	control16(c, 2, version, 1); // protocol version
 	control32(c, 3, 3, 1); // framing Capabilities

@@ -2507,9 +2507,9 @@ void sendchap(sessionidt s, tunnelidt t)
 	q[1] = radius[r].id;			// ID
 	q[4] = 16;				// value size (size of challenge)
 	memcpy(q + 5, radius[r].auth, 16);	// challenge
-	strcpy((char *) q + 21, hostname);	// our name
-	*(uint16_t *) (q + 2) = htons(strlen(hostname) + 21); // length
-	tunnelsend(b, strlen(hostname) + 21 + (q - b), t); // send it
+	strcpy((char *) q + 21, config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname);	// our name
+	*(uint16_t *) (q + 2) = htons(strlen(config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname) + 21); // length
+	tunnelsend(b, strlen(config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname) + 21 + (q - b), t); // send it
 }
 
 // fill in a L2TP message with a PPP frame,

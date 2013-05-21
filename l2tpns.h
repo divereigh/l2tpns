@@ -69,6 +69,8 @@
 // Multi bind address constants
 #define MAX_UDPFD 4
 #define MAX_BINDADDR MAX_UDPFD
+// + 1 for the LAC Hostname
+#define MAX_NBHOSTNAME (MAX_UDPFD + 1)
 // 4 + 1 for the udplac
 #define INIT_TABUDPFD {-1, -1, -1, -1, -1}
 #define INIT_TABUDPVAR {0, 0, 0, 0, 0}
@@ -780,9 +782,12 @@ typedef struct
 	int nbudpfd; // number UDP file handle
 	int nbmultiaddress; // number multi address to bind
 	int indexlacudpfd;	// Index UDP LAC file handle (in udpfd[])
+	int nbmultihostname;	// number hostname, normally the same number as the nbudpfd
 	in_addr_t bind_n_address[MAX_BINDADDR];
 	in_addr_t iftun_n_address[MAX_BINDADDR];
 	char bind_multi_address[256];
+	char multi_hostname[512];
+	char multi_n_hostname[MAX_NBHOSTNAME][MAXHOSTNAME];	// list hostname
 } configt;
 
 enum config_typet { INT, STRING, UNSIGNED_LONG, SHORT, BOOL, IPv4, IPv6 };

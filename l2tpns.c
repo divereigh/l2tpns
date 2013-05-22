@@ -5471,6 +5471,8 @@ static void update_config()
 				config->nbmultihostname++;
 				if (config->nbmultihostname >= MAX_NBHOSTNAME) break;
 			}
+
+			shost = n;
 		}
 
 		if (config->nbmultihostname >= 1)

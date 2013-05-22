@@ -5456,7 +5456,7 @@ static void update_config()
 
 		while (*shost && (shost < e))
 		{
-			while ((n < e) && (*n == ' ' || *n == '\t')) n++;
+			while ((n < e) && (*n == ' ' || *n == ',' || *n == '\t')) n++;
 
 			i = 0;
 			while (n < e && (*n != ',') && (*n != '\t'))
@@ -5464,6 +5464,7 @@ static void update_config()
 				config->multi_n_hostname[config->nbmultihostname][i] = *n;
 				n++;i++;
 			}
+
 			if (i > 0)
 			{
 				config->multi_n_hostname[config->nbmultihostname][i] = 0;

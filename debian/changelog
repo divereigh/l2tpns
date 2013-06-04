@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn3.10) unstable; urgency=low
+
+  * Fix: authentication success was sent 2 times.
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Tue, 04 Jun 2013 11:38:04 +0200
+
 l2tpns (2.2.1-2fdn3.9) unstable; urgency=low
 
   * Adding the possibility to set multiple hostname.

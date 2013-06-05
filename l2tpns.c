@@ -3218,7 +3218,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 
 					// Set multilink options before sending initial LCP packet
 					sess_local[s].mp_mrru = 1614;
-					sess_local[s].mp_epdis = ntohl(config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] : my_address);
+					sess_local[s].mp_epdis = ntohl(config->iftun_address ? config->iftun_address : my_address);
 
 					sendlcp(s, t);
 					change_state(s, lcp, RequestSent);

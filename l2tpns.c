@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <linux/if_tun.h>
 #define SYSLOG_NAMES
+#include <stdio.h>
 #include <syslog.h>
 #include <malloc.h>
 #include <net/route.h>
@@ -19,7 +20,6 @@
 #include <netinet/ip6.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include <sys/ioctl.h>
@@ -5050,9 +5050,9 @@ int main(int argc, char *argv[])
 		case 'd':
 			if (fork()) exit(0);
 			setsid();
-			freopen("/dev/null", "r", stdin);
-			freopen("/dev/null", "w", stdout);
-			freopen("/dev/null", "w", stderr);
+			FILE *in = freopen("/dev/null", "r", stdin);
+			FILE *out = freopen("/dev/null", "w", stdout);
+			FILE *err = freopen("/dev/null", "w", stderr);
 			break;
 		case 'v':
 			optdebug++;
@@ -5103,7 +5103,7 @@ int main(int argc, char *argv[])
 			LOG(0, 0, 0, "Can't set ulimit: %s\n", strerror(errno));
 
 		// Make core dumps go to /tmp
-		chdir("/tmp");
+		int ret = chdir("/tmp");
 	}
 
 	if (config->scheduler_fifo)

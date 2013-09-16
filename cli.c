@@ -730,7 +730,7 @@ static int cmd_show_counters(struct cli_def *cli, const char *command, char **ar
 			GET_STAT(tun_tx_bytes),
 			GET_STAT(tun_tx_packets),
 			GET_STAT(tun_tx_errors));
-	cli_print(cli, "");
+	cli_print(cli, " ");
 
 	cli_print(cli, "%-10s %10s %10s %10s %10s", "Tunnel", "Bytes", "Packets", "Errors", "Retries");
 	cli_print(cli, "%-10s %10u %10u %10u", "RX",
@@ -742,7 +742,7 @@ static int cmd_show_counters(struct cli_def *cli, const char *command, char **ar
 			GET_STAT(tunnel_tx_packets),
 			GET_STAT(tunnel_tx_errors),
 			GET_STAT(tunnel_retries));
-	cli_print(cli, "");
+	cli_print(cli, " ");
 
 	cli_print(cli, "%-30s%-10s", "Counter", "Value");
 	cli_print(cli, "-----------------------------------------");
@@ -808,7 +808,7 @@ static int cmd_show_counters(struct cli_def *cli, const char *command, char **ar
 		char *p = strchr(t, '\n');
 		if (p) *p = 0;
 
-		cli_print(cli, "");
+		cli_print(cli, " ");
 		cli_print(cli, "Last counter reset %s", t);
 	}
 
@@ -1791,7 +1791,7 @@ static int cmd_uptime(struct cli_def *cli, const char *command, char **argv, int
 		return CLI_HELP_NO_ARGS;
 
 	fh = fopen("/proc/loadavg", "r");
-	fgets(buf, 100, fh);
+	p = fgets(buf, 100, fh);
 	fclose(fh);
 
 	for (i = 0; i < 3; i++)
@@ -2220,7 +2220,7 @@ static int cmd_show_bgp(struct cli_def *cli, const char *command, char **argv, i
 
 		if (!hdr++)
 		{
-			cli_print(cli, "");
+			cli_print(cli, " ");
 			cli_print(cli, "Peer                  AS         Address "
 			    "State       Retries Retry in Route Pend    Timers");
 			cli_print(cli, "------------------ ----- --------------- "

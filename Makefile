@@ -10,20 +10,18 @@ DEFINES =
 DEFINES += -DLIBDIR='"$(libdir)"'
 DEFINES += -DETCDIR='"$(etcdir)"'
 
-OPTIM =
-OPTIM += -g
-OPTIM += -O3
+DEB_CFLAGS_MAINT_APPEND=-Wall -O3 -Wno-format-zero-length
 
 CC = gcc
 LD = gcc
 INCLUDES = -I.
-CPPFLAGS = $(INCLUDES) $(DEFINES)
-CFLAGS = -Wall -Wformat-security -Wno-format-zero-length $(OPTIM)
-LDFLAGS =
+CPPFLAGS = `dpkg-buildflags --get CPPFLAGS` $(INCLUDES) $(DEFINES)
+CFLAGS = `dpkg-buildflags --get CFLAGS`
+LDFLAGS = `dpkg-buildflags --get LDFLAGS`
 LDLIBS =
 INSTALL = install -c -D -o root -g root
 
-l2tpns.LIBS = -lm -lcli -ldl
+l2tpns.LIBS = -lcli -ldl
 
 OBJS = arp.o cli.o cluster.o constants.o control.o icmp.o l2tpns.o \
     ll.o md5.o ppp.o radius.o tbf.o util.o pppoe.o l2tplac.o

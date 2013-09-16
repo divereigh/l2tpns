@@ -19,6 +19,7 @@ DAEMON=/usr/sbin/l2tpns
 NAME=l2tpns
 DESC=l2tpns
 ARGS="-d"
+ACCTDIR=$(grep "set accounting_dir" /etc/l2tpns/startup-config | sed -e 's/.* "//' -e 's/".*//')
 
 test -f $DAEMON || exit 0
 
@@ -27,6 +28,9 @@ set -e
 case "$1" in
   start)
 	echo -n "Starting $DESC: "
+	if [ ! -d "$ACCTDIR" ]; then
+		mkdir -p "$ACCTDIR"
+	fi
 	start-stop-daemon --start --quiet --pidfile /var/run/$NAME.pid \
 		--exec $DAEMON -- $ARGS
 	echo "$NAME."

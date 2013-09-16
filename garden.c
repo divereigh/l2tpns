@@ -157,7 +157,7 @@ int plugin_become_master(void)
     for (i = 0; up_commands[i] && *up_commands[i]; i++)
     {
 	f->log(3, 0, 0, "Running %s\n", up_commands[i]);
-	system(up_commands[i]);
+	int status = system(up_commands[i]);
     }
 
     return PLUGIN_RET_OK;
@@ -176,6 +176,7 @@ int garden_session(sessiont *s, int flag, char *newuser)
 {
     char cmd[2048];
     sessionidt sess;
+	int status;
 
     if (!s) return 0;
     if (!s->opened) return 0;
@@ -191,7 +192,7 @@ int garden_session(sessiont *s, int flag, char *newuser)
 	    f->fmtaddr(htonl(s->ip), 0));
 
 	f->log(3, sess, s->tunnel, "%s\n", cmd);
-	system(cmd);
+	status = system(cmd);
 	s->walled_garden = 1;
     }
     else
@@ -229,7 +230,7 @@ int garden_session(sessiont *s, int flag, char *newuser)
 	f->log(3, sess, s->tunnel, "%s\n", cmd);
 	while (--count)
 	{
-	    int status = system(cmd);
+	    status = system(cmd);
 	    if (WEXITSTATUS(status) != 0) break;
 	}
 
@@ -272,7 +273,7 @@ int plugin_init(struct pluginfuncs *funcs)
 	for (i = 0; down_commands[i] && *down_commands[i]; i++)
 	{
 	    f->log(3, 0, 0, "Running %s\n", down_commands[i]);
-	    system(down_commands[i]);
+	    int status = system(down_commands[i]);
 	}
     }
 
@@ -289,7 +290,7 @@ void plugin_done()
     for (i = 0; down_commands[i] && *down_commands[i]; i++)
     {
 	f->log(3, 0, 0, "Running %s\n", down_commands[i]);
-	system(down_commands[i]);
+	int status = system(down_commands[i]);
     }
 }
 

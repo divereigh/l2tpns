@@ -2,9 +2,6 @@
 # Sample debian/rules that uses debhelper.
 # GNU copyright 1997 to 1999 by Joey Hess.
 
-ifneq (,$(findstring debug,$(DEB_BUILD_OPTIONS)))
-	CFLAGS += -g
-endif
 ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
 	INSTALL_PROGRAM += -s
 endif
@@ -16,8 +13,9 @@ configure-stamp:
 
 	touch configure-stamp
 
-build: build-stamp
-
+build: build-arch build-indep
+build-arch: build-stamp
+build-indep: build-stamp
 build-stamp: configure-stamp 
 	dh_testdir
 
@@ -33,14 +31,14 @@ clean:
 	rm -f build-stamp configure-stamp
 
 	# Add here commands to clean up after the build process.
-	-$(MAKE) clean
+	[ ! -f Makefile ] || $(MAKE) clean
 
 	dh_clean
 
 install: build
 	dh_testdir
 	dh_testroot
-	dh_clean -k
+	dh_prep
 	dh_installdirs
 
 	$(MAKE) install DESTDIR=$(CURDIR)/debian/l2tpns

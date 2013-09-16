@@ -1013,8 +1013,10 @@ sessionidt sessionbyipv6(struct in6_addr ip)
 		 ip.s6_addr[1] == 0x80 &&
 		 ip.s6_addr16[1] == 0 &&
 		 ip.s6_addr16[2] == 0 &&
-		 ip.s6_addr16[3] == 0)) {
-		s = lookup_ipmap(*(in_addr_t *) &ip.s6_addr[8]);
+		 ip.s6_addr16[3] == 0))
+	{
+		in_addr_t *pipv4 = (in_addr_t *) &ip.s6_addr[8];
+		s = lookup_ipmap(*pipv4);
 	} else {
 		s = lookup_ipv6map(ip);
 	}
@@ -1100,7 +1102,7 @@ static void cache_ipv6map(struct in6_addr ip, int prefixlen, sessionidt s)
 //
 // CLI list to dump current ipcache.
 //
-int cmd_show_ipcache(struct cli_def *cli, char *command, char **argv, int argc)
+int cmd_show_ipcache(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	union iphash *d = ip_hash, *e, *f, *g;
 	int i, j, k, l;
@@ -1844,10 +1846,11 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 static void control16(controlt * c, uint16_t avp, uint16_t val, uint8_t m)
 {
 	uint16_t l = (m ? 0x8008 : 0x0008);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	*(uint16_t *) (c->buf + c->length + 6) = htons(val);
+	uint16_t *pint16 = (uint16_t *) (c->buf + c->length + 0);
+	pint16[0] = htons(l);
+	pint16[1] = htons(0);
+	pint16[2] = htons(avp);
+	pint16[3] = htons(val);
 	c->length += 8;
 }
 
@@ -1855,10 +1858,12 @@ static void control16(controlt * c, uint16_t avp, uint16_t val, uint8_t m)
 static void control32(controlt * c, uint16_t avp, uint32_t val, uint8_t m)
 {
 	uint16_t l = (m ? 0x800A : 0x000A);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
-	*(uint32_t *) (c->buf + c->length + 6) = htonl(val);
+	uint16_t *pint16 = (uint16_t *) (c->buf + c->length + 0);
+	uint32_t *pint32 = (uint32_t *) (c->buf + c->length + 6);
+	pint16[0] = htons(l);
+	pint16[1] = htons(0);
+	pint16[2] = htons(avp);
+	pint32[0] = htonl(val);
 	c->length += 10;
 }
 
@@ -1866,9 +1871,10 @@ static void control32(controlt * c, uint16_t avp, uint32_t val, uint8_t m)
 static void controls(controlt * c, uint16_t avp, char *val, uint8_t m)
 {
 	uint16_t l = ((m ? 0x8000 : 0) + strlen(val) + 6);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
+	uint16_t *pint16 = (uint16_t *) (c->buf + c->length + 0);
+	pint16[0] = htons(l);
+	pint16[1] = htons(0);
+	pint16[2] = htons(avp);
 	memcpy(c->buf + c->length + 6, val, strlen(val));
 	c->length += 6 + strlen(val);
 }
@@ -1877,9 +1883,10 @@ static void controls(controlt * c, uint16_t avp, char *val, uint8_t m)
 static void controlb(controlt * c, uint16_t avp, uint8_t *val, unsigned int len, uint8_t m)
 {
 	uint16_t l = ((m ? 0x8000 : 0) + len + 6);
-	*(uint16_t *) (c->buf + c->length + 0) = htons(l);
-	*(uint16_t *) (c->buf + c->length + 2) = htons(0);
-	*(uint16_t *) (c->buf + c->length + 4) = htons(avp);
+	uint16_t *pint16 = (uint16_t *) (c->buf + c->length + 0);
+	pint16[0] = htons(l);
+	pint16[1] = htons(0);
+	pint16[2] = htons(avp);
 	memcpy(c->buf + c->length + 6, val, len);
 	c->length += 6 + len;
 }
@@ -1924,10 +1931,11 @@ static void controlnull(tunnelidt t)
 // add a control message to a tunnel, and send if within window
 static void controladd(controlt *c, sessionidt far, tunnelidt t)
 {
-	*(uint16_t *) (c->buf + 2) = htons(c->length); // length
-	*(uint16_t *) (c->buf + 4) = htons(tunnel[t].far); // tunnel
-	*(uint16_t *) (c->buf + 6) = htons(far); // session
-	*(uint16_t *) (c->buf + 8) = htons(tunnel[t].ns); // sequence
+	uint16_t *pint16 = (uint16_t *) (c->buf + 2);
+	pint16[0] = htons(c->length); // length
+	pint16[1] = htons(tunnel[t].far); // tunnel
+	pint16[2] = htons(far); // session
+	pint16[3] = htons(tunnel[t].ns); // sequence
 	tunnel[t].ns++;              // advance sequence
 	// link in message in to queue
 	if (tunnel[t].controlc)
@@ -6275,7 +6283,7 @@ void become_master(void)
 	}
 }
 
-int cmd_show_hist_idle(struct cli_def *cli, char *command, char **argv, int argc)
+int cmd_show_hist_idle(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int s, i;
 	int count = 0;
@@ -6313,7 +6321,7 @@ int cmd_show_hist_idle(struct cli_def *cli, char *command, char **argv, int argc
 	return CLI_OK;
 }
 
-int cmd_show_hist_open(struct cli_def *cli, char *command, char **argv, int argc)
+int cmd_show_hist_open(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int s, i;
 	int count = 0;

@@ -1954,7 +1954,7 @@ shortpacket:
 
 //====================================================================================================
 
-int cmd_show_cluster(struct cli_def *cli, char *command, char **argv, int argc)
+int cmd_show_cluster(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 

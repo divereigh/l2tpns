@@ -92,7 +92,7 @@ void cluster_send_ping(time_t basetime);
 void cluster_heartbeat(void);
 void cluster_check_master(void);
 void cluster_check_slaves(void);
-int cmd_show_cluster(struct cli_def *cli, char *command, char **argv, int argc);
+int cmd_show_cluster(struct cli_def *cli, const char *command, char **argv, int argc);
 int master_forward_pppoe_packet(uint8_t *data, int size, uint8_t codepad);
 
 #endif /* __CLUSTER_H__ */

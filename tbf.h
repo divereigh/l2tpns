@@ -40,6 +40,6 @@ int new_tbf(int sid, int max_credit, int rate, void (*f)(sessionidt, uint8_t *, 
 int free_tbf(int tid);
 void fsck_tbfs(void);
 
-int cmd_show_tbf(struct cli_def *cli, char *command, char **argv, int argc);
+int cmd_show_tbf(struct cli_def *cli, const char *command, char **argv, int argc);
 
 #endif /* __TBF_H__ */

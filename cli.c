@@ -74,60 +74,60 @@ static char *debug_levels[] = {
 
 #endif
 
-static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_tunnels(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_users(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_radius(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_version(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_pool(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_run(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_banana(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_plugins(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_throttle(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_write_memory(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_drop_user(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_drop_tunnel(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_drop_session(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_snoop(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_no_snoop(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_throttle(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_no_throttle(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_debug(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_no_debug(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_set(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_load_plugin(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_remove_plugin(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_uptime(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_shutdown(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_reload(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_setforward(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_rmtlnsconf(struct cli_def *cli, char *command, char **argv, int argc);
+static int cmd_show_session(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_tunnels(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_users(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_radius(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_version(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_pool(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_run(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_banana(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_plugins(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_throttle(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_write_memory(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_drop_user(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_drop_tunnel(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_drop_session(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_snoop(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_no_snoop(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_throttle(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_no_throttle(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_debug(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_no_debug(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_set(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_load_plugin(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_remove_plugin(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_uptime(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_shutdown(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_reload(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_setforward(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_rmtlnsconf(struct cli_def *cli, const char *command, char **argv, int argc);
 
 static int regular_stuff(struct cli_def *cli);
 
 #ifdef STATISTICS
-static int cmd_show_counters(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_clear_counters(struct cli_def *cli, char *command, char **argv, int argc);
+static int cmd_show_counters(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_clear_counters(struct cli_def *cli, const char *command, char **argv, int argc);
 #endif /* STATISTICS */
 
 #ifdef BGP
 #define MODE_CONFIG_BGP 8
-static int cmd_router_bgp(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_router_bgp_no_neighbour(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_bgp(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_suspend_bgp(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_no_suspend_bgp(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_restart_bgp(struct cli_def *cli, char *command, char **argv, int argc);
+static int cmd_router_bgp(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_router_bgp_neighbour(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_router_bgp_no_neighbour(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_bgp(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_suspend_bgp(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_no_suspend_bgp(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_restart_bgp(struct cli_def *cli, const char *command, char **argv, int argc);
 #endif /* BGP */
 
 #define MODE_CONFIG_NACL 9
-static int cmd_ip_access_list(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_no_ip_access_list(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_ip_access_list_rule(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_filter(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_no_filter(struct cli_def *cli, char *command, char **argv, int argc);
-static int cmd_show_access_list(struct cli_def *cli, char *command, char **argv, int argc);
+static int cmd_ip_access_list(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_no_ip_access_list(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_ip_access_list_rule(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_filter(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_no_filter(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_access_list(struct cli_def *cli, const char *command, char **argv, int argc);
 
 /* match if b is a substr of a */
 #define MATCH(a,b) (!strncmp((a), (b), strlen(b)))
@@ -354,7 +354,7 @@ void cli_do(int sockfd)
 	exit(0);
 }
 
-static void cli_print_log(struct cli_def *cli, char *string)
+static void cli_print_log(struct cli_def *cli, const char *string)
 {
 	LOG(3, 0, 0, "%s\n", string);
 }
@@ -403,7 +403,7 @@ int cli_arg_help(struct cli_def *cli, int cr_ok, char *entry, ...)
 	return CLI_OK;
 }
 
-static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_session(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -582,7 +582,7 @@ static int cmd_show_session(struct cli_def *cli, char *command, char **argv, int
 	return CLI_OK;
 }
 
-static int cmd_show_tunnels(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_tunnels(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i, x, show_all = 0;
 	char *states[] = {
@@ -673,7 +673,7 @@ static int cmd_show_tunnels(struct cli_def *cli, char *command, char **argv, int
 	return CLI_OK;
 }
 
-static int cmd_show_users(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_users(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	char sid[32][8];
 	char *sargv[32];
@@ -715,7 +715,7 @@ static int cmd_show_users(struct cli_def *cli, char *command, char **argv, int a
 }
 
 #ifdef STATISTICS
-static int cmd_show_counters(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_counters(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	if (CLI_HELP_REQUESTED)
 		return CLI_HELP_NO_ARGS;
@@ -815,7 +815,7 @@ static int cmd_show_counters(struct cli_def *cli, char *command, char **argv, in
 	return CLI_OK;
 }
 
-static int cmd_clear_counters(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_clear_counters(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	if (CLI_HELP_REQUESTED)
 		return CLI_HELP_NO_ARGS;
@@ -828,7 +828,7 @@ static int cmd_clear_counters(struct cli_def *cli, char *command, char **argv, i
 }
 #endif /* STATISTICS */
 
-static int cmd_show_version(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_version(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	if (CLI_HELP_REQUESTED)
 		return CLI_HELP_NO_ARGS;
@@ -837,7 +837,7 @@ static int cmd_show_version(struct cli_def *cli, char *command, char **argv, int
 	return CLI_OK;
 }
 
-static int cmd_show_pool(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_pool(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	int used = 0, free = 0, show_all = 0;
@@ -899,13 +899,13 @@ static int cmd_show_pool(struct cli_def *cli, char *command, char **argv, int ar
 }
 
 static FILE *save_config_fh = 0;
-static void print_save_config(struct cli_def *cli, char *string)
+static void print_save_config(struct cli_def *cli, const char *string)
 {
 	if (save_config_fh)
 		fprintf(save_config_fh, "%s\n", string);
 }
 
-static int cmd_write_memory(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_write_memory(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	if (CLI_HELP_REQUESTED)
 		return CLI_HELP_NO_ARGS;
@@ -928,7 +928,7 @@ static int cmd_write_memory(struct cli_def *cli, char *command, char **argv, int
 
 static char const *show_access_list_rule(int extended, ip_filter_rulet *rule);
 
-static int cmd_show_run(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_run(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	char ipv6addr[INET6_ADDRSTRLEN];
@@ -1025,7 +1025,7 @@ static int cmd_show_run(struct cli_def *cli, char *command, char **argv, int arg
 	return CLI_OK;
 }
 
-static int cmd_show_radius(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_radius(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i, free = 0, used = 0, show_all = 0;
 	char *states[] = {
@@ -1080,7 +1080,7 @@ static int cmd_show_radius(struct cli_def *cli, char *command, char **argv, int 
 	return CLI_OK;
 }
 
-static int cmd_show_plugins(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_plugins(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -1095,7 +1095,7 @@ static int cmd_show_plugins(struct cli_def *cli, char *command, char **argv, int
 	return CLI_OK;
 }
 
-static int cmd_show_throttle(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_throttle(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -1127,7 +1127,7 @@ static int cmd_show_throttle(struct cli_def *cli, char *command, char **argv, in
 	return CLI_OK;
 }
 
-static int cmd_show_banana(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_banana(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	if (CLI_HELP_REQUESTED)
 		return CLI_HELP_NO_ARGS;
@@ -1150,7 +1150,7 @@ static int cmd_show_banana(struct cli_def *cli, char *command, char **argv, int 
 	return CLI_OK;
 }
 
-static int cmd_drop_user(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_drop_user(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	sessionidt s;
@@ -1191,7 +1191,7 @@ static int cmd_drop_user(struct cli_def *cli, char *command, char **argv, int ar
 	return CLI_OK;
 }
 
-static int cmd_drop_tunnel(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_drop_tunnel(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	tunnelidt t;
@@ -1241,7 +1241,7 @@ static int cmd_drop_tunnel(struct cli_def *cli, char *command, char **argv, int 
 	return CLI_OK;
 }
 
-static int cmd_drop_session(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_drop_session(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	sessionidt s;
@@ -1291,7 +1291,7 @@ static int cmd_drop_session(struct cli_def *cli, char *command, char **argv, int
 	return CLI_OK;
 }
 
-static int cmd_snoop(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_snoop(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	in_addr_t ip;
 	uint16_t port;
@@ -1364,7 +1364,7 @@ static int cmd_snoop(struct cli_def *cli, char *command, char **argv, int argc)
 	return CLI_OK;
 }
 
-static int cmd_no_snoop(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_no_snoop(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	sessionidt s;
@@ -1402,7 +1402,7 @@ static int cmd_no_snoop(struct cli_def *cli, char *command, char **argv, int arg
 	return CLI_OK;
 }
 
-static int cmd_throttle(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_throttle(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int rate_in = 0;
 	int rate_out = 0;
@@ -1530,7 +1530,7 @@ static int cmd_throttle(struct cli_def *cli, char *command, char **argv, int arg
 	return CLI_OK;
 }
 
-static int cmd_no_throttle(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_no_throttle(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	sessionidt s;
@@ -1575,7 +1575,7 @@ static int cmd_no_throttle(struct cli_def *cli, char *command, char **argv, int 
 	return CLI_OK;
 }
 
-static int cmd_debug(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_debug(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -1639,7 +1639,7 @@ static int cmd_debug(struct cli_def *cli, char *command, char **argv, int argc)
 	return CLI_OK;
 }
 
-static int cmd_no_debug(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_no_debug(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -1685,7 +1685,7 @@ static int cmd_no_debug(struct cli_def *cli, char *command, char **argv, int arg
 	return CLI_OK;
 }
 
-static int cmd_load_plugin(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_load_plugin(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i, firstfree = 0;
 
@@ -1720,7 +1720,7 @@ static int cmd_load_plugin(struct cli_def *cli, char *command, char **argv, int 
 	return CLI_OK;
 }
 
-static int cmd_remove_plugin(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_remove_plugin(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -1781,7 +1781,7 @@ static char *duration(time_t secs)
 	return buf;
 }
 
-static int cmd_uptime(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_uptime(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	FILE *fh;
 	char buf[100], *p = buf, *loads[3];
@@ -1817,7 +1817,7 @@ static int cmd_uptime(struct cli_def *cli, char *command, char **argv, int argc)
 	return CLI_OK;
 }
 
-static int cmd_set(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_set(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -1946,7 +1946,7 @@ int regular_stuff(struct cli_def *cli)
 }
 
 #ifdef BGP
-static int cmd_router_bgp(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_router_bgp(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int as;
 
@@ -2012,7 +2012,7 @@ static int find_bgp_neighbour(char const *name)
 	return new;
 }
 
-static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_router_bgp_neighbour(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	int keepalive;
@@ -2156,7 +2156,7 @@ static int cmd_router_bgp_neighbour(struct cli_def *cli, char *command, char **a
 	return CLI_OK;
 }
 
-static int cmd_router_bgp_no_neighbour(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_router_bgp_no_neighbour(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -2188,7 +2188,7 @@ static int cmd_router_bgp_no_neighbour(struct cli_def *cli, char *command, char 
 	return CLI_OK;
 }
 
-static int cmd_show_bgp(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_bgp(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	int hdr = 0;
@@ -2243,7 +2243,7 @@ static int cmd_show_bgp(struct cli_def *cli, char *command, char **argv, int arg
 	return CLI_OK;
 }
 
-static int cmd_suspend_bgp(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_suspend_bgp(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	char *addr;
@@ -2276,7 +2276,7 @@ static int cmd_suspend_bgp(struct cli_def *cli, char *command, char **argv, int 
 	return CLI_OK;
 }
 
-static int cmd_no_suspend_bgp(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_no_suspend_bgp(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	char *addr;
@@ -2310,7 +2310,7 @@ static int cmd_no_suspend_bgp(struct cli_def *cli, char *command, char **argv, i
 	return CLI_OK;
 }
 
-static int cmd_restart_bgp(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_restart_bgp(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	char *addr;
@@ -2438,12 +2438,12 @@ static int access_list(struct cli_def *cli, char **argv, int argc, int add)
 	return CLI_OK;
 }
 
-static int cmd_ip_access_list(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_ip_access_list(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	return access_list(cli, argv, argc, 1);
 }
 
-static int cmd_no_ip_access_list(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_no_ip_access_list(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	return access_list(cli, argv, argc, 0);
 }
@@ -2529,7 +2529,7 @@ static char const *show_access_list_rule(int extended, ip_filter_rulet *rule)
 	return buf;
 }
 
-static ip_filter_rulet *access_list_rule_ext(struct cli_def *cli, char *command, char **argv, int argc)
+static ip_filter_rulet *access_list_rule_ext(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	static ip_filter_rulet rule;
 	struct in_addr addr;
@@ -2764,7 +2764,7 @@ static ip_filter_rulet *access_list_rule_ext(struct cli_def *cli, char *command,
 	return &rule;
 }
 
-static ip_filter_rulet *access_list_rule_std(struct cli_def *cli, char *command, char **argv, int argc)
+static ip_filter_rulet *access_list_rule_std(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	static ip_filter_rulet rule;
 	struct in_addr addr;
@@ -2880,7 +2880,7 @@ static ip_filter_rulet *access_list_rule_std(struct cli_def *cli, char *command,
 	return &rule;
 }
 
-static int cmd_ip_access_list_rule(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_ip_access_list_rule(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	ip_filter_rulet *rule = ip_filters[filt].extended
@@ -2906,7 +2906,7 @@ static int cmd_ip_access_list_rule(struct cli_def *cli, char *command, char **ar
 	return CLI_OK;
 }
 
-static int cmd_filter(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_filter(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	sessionidt s;
 	int i;
@@ -3002,7 +3002,7 @@ static int cmd_filter(struct cli_def *cli, char *command, char **argv, int argc)
 	return CLI_OK;
 }
 
-static int cmd_no_filter(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_no_filter(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 	sessionidt s;
@@ -3047,7 +3047,7 @@ static int cmd_no_filter(struct cli_def *cli, char *command, char **argv, int ar
 	return CLI_OK;
 }
 
-static int cmd_show_access_list(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_access_list(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int i;
 
@@ -3092,7 +3092,7 @@ static int cmd_show_access_list(struct cli_def *cli, char *command, char **argv,
 	return CLI_OK;
 }
 
-static int cmd_shutdown(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_shutdown(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	if (CLI_HELP_REQUESTED)
 		return CLI_HELP_NO_ARGS;
@@ -3101,7 +3101,7 @@ static int cmd_shutdown(struct cli_def *cli, char *command, char **argv, int arg
 	return CLI_OK;
 }
 
-static int cmd_reload(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_reload(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	if (CLI_HELP_REQUESTED)
 		return CLI_HELP_NO_ARGS;
@@ -3110,7 +3110,7 @@ static int cmd_reload(struct cli_def *cli, char *command, char **argv, int argc)
 	return CLI_OK;
 }
 
-static int cmd_setforward(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_setforward(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	int ret;
 
@@ -3160,7 +3160,7 @@ static int cmd_setforward(struct cli_def *cli, char *command, char **argv, int a
 	return CLI_OK;
 }
 
-static int cmd_show_rmtlnsconf(struct cli_def *cli, char *command, char **argv, int argc)
+static int cmd_show_rmtlnsconf(struct cli_def *cli, const char *command, char **argv, int argc)
 {
 	confrlnsidt idrlns;
 	char strdisp[1024];

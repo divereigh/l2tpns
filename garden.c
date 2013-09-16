@@ -157,7 +157,7 @@ int plugin_become_master(void)
     for (i = 0; up_commands[i] && *up_commands[i]; i++)
     {
 	f->log(3, 0, 0, "Running %s\n", up_commands[i]);
-	int status = system(up_commands[i]);
+	if (-1 == system(up_commands[i])) f->log(0, 0, 0, "error command %s\n", up_commands[i]);
     }
 
     return PLUGIN_RET_OK;
@@ -273,7 +273,7 @@ int plugin_init(struct pluginfuncs *funcs)
 	for (i = 0; down_commands[i] && *down_commands[i]; i++)
 	{
 	    f->log(3, 0, 0, "Running %s\n", down_commands[i]);
-	    int status = system(down_commands[i]);
+	    if (-1 == system(down_commands[i])) f->log(0, 0, 0, "error command %s\n", down_commands[i]);
 	}
     }
 
@@ -290,7 +290,7 @@ void plugin_done()
     for (i = 0; down_commands[i] && *down_commands[i]; i++)
     {
 	f->log(3, 0, 0, "Running %s\n", down_commands[i]);
-	int status = system(down_commands[i]);
+	if (-1 == system(down_commands[i])) f->log(0, 0, 0, "error command %s\n", down_commands[i]);
     }
 }
 

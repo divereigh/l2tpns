@@ -5050,9 +5050,9 @@ int main(int argc, char *argv[])
 		case 'd':
 			if (fork()) exit(0);
 			setsid();
-			FILE *in = freopen("/dev/null", "r", stdin);
-			FILE *out = freopen("/dev/null", "w", stdout);
-			FILE *err = freopen("/dev/null", "w", stderr);
+			if(!freopen("/dev/null", "r", stdin)) LOG(0, 0, 0, "Error freopen stdin: %s\n", strerror(errno));
+			if(!freopen("/dev/null", "w", stdout)) LOG(0, 0, 0, "Error freopen stdout: %s\n", strerror(errno));
+			if(!freopen("/dev/null", "w", stderr)) LOG(0, 0, 0, "Error freopen stderr: %s\n", strerror(errno));
 			break;
 		case 'v':
 			optdebug++;
@@ -5103,7 +5103,7 @@ int main(int argc, char *argv[])
 			LOG(0, 0, 0, "Can't set ulimit: %s\n", strerror(errno));
 
 		// Make core dumps go to /tmp
-		int ret = chdir("/tmp");
+		if(chdir("/tmp")) LOG(0, 0, 0, "Error chdir /tmp: %s\n", strerror(errno));
 	}
 
 	if (config->scheduler_fifo)

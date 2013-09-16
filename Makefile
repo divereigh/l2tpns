@@ -10,14 +10,16 @@ DEFINES =
 DEFINES += -DLIBDIR='"$(libdir)"'
 DEFINES += -DETCDIR='"$(etcdir)"'
 
-DEB_CFLAGS_MAINT_APPEND=-Wall -O3 -Wno-format-zero-length
+OPTIM =
+OPTIM += -g
+OPTIM += -O3
 
 CC = gcc
 LD = gcc
 INCLUDES = -I.
-CPPFLAGS = `dpkg-buildflags --get CPPFLAGS` $(INCLUDES) $(DEFINES)
-CFLAGS = `dpkg-buildflags --get CFLAGS`
-LDFLAGS = `dpkg-buildflags --get LDFLAGS`
+CPPFLAGS = $(INCLUDES) $(DEFINES)
+CFLAGS = -Wall -Wformat-security $(OPTIM)
+LDFLAGS =
 LDLIBS =
 INSTALL = install -c -D -o root -g root
 

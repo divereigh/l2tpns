@@ -1801,6 +1801,8 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 {
 	sessiont *sp;
 	tunnelidt t;
+	uint8_t *p;
+	uint8_t *data = buf;	// Keep a copy of the originals.
 
 	uint8_t b[MAXETHER + 20];
 
@@ -1823,11 +1825,14 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 	LOG(5, s, t, "Ethernet -> Tunnel (%d bytes)\n", len);
 
 	// Add on L2TP header
-	{
-		uint8_t *p = makeppp(b, sizeof(b), buf, len, s, t, PPPIP, 0, 0, 0);
-		if (!p) return;
-		tunnelsend(b, len + (p-b), t); // send it...
-	}
+	if (*(uint16_t *) (data + 2) == htons(PKTIPV6))
+		p = makeppp(b, sizeof(b), buf, len, s, t, PPPIPV6, 0, 0, 0); // IPV6
+	else
+		p = makeppp(b, sizeof(b), buf, len, s, t, PPPIP, 0, 0, 0); // IPV4
+
+	if (!p) return;
+
+	tunnelsend(b, len + (p-b), t); // send it...
 
 	// Snooping this session.
 	if (sp->snoop_ip && sp->snoop_port)

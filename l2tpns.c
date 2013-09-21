@@ -5809,6 +5809,10 @@ int load_session(sessionidt s, sessiont *new)
 				uncache_ipmap(session[s].ip);
 		}
 
+		// remove old IPV6 routes...
+		if (session[s].ipv6route.s6_addr[0] && session[s].ipv6prefixlen)
+			route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 0);
+
 		routed = 0;
 
 		// add new routes...

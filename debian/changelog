@@ -1,3 +1,20 @@
+l2tpns (2.2.1-2fdn3.11) UNRELEASED; urgency=low
+
+  * Fix: throttle ipv6 out.
+  * Fix: remove old IPV6 routes on slave
+  * Fix: compiling Warning, dpkg-buildflags ...
+  * Enabled hardened build flags, thanks Moritz Muehlenhoff (closes: #657846)
+  * Packaging updates
+  * Move to 3.0 (native) source format
+  * Bump DH compat level to 8
+  * Fix ordering of stdio.h/syslog.h includes (closes: #707385)
+  * Create accounting_dir in init script if necessary (closes: #418156)
+  * Bump Standards-Version to 3.9.4.0
+  * Add build-arch/build-indep targets to debian/rules
+  * Fix: compiling Warning
+
+ -- Fernando Alves <fernando.alves@sameswireless.fr>  Sun, 06 Oct 2013 10:38:53 +0200
+
 l2tpns (2.2.1-2fdn3.10) unstable; urgency=low
 
   * Fix: authentication success was sent 2 times.

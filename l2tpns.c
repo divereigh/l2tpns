@@ -188,6 +188,7 @@ config_descriptt config_values[] = {
 	CONFIG("bind_multi_address", bind_multi_address, STRING),
 	CONFIG("pppoe_only_equal_svc_name", pppoe_only_equal_svc_name, BOOL),
 	CONFIG("multi_hostname", multi_hostname, STRING),
+	CONFIG("no_throttle_local_IP", no_throttle_local_IP, BOOL),
 	{ NULL, 0, 0, 0 }
 };
 
@@ -1417,7 +1418,7 @@ void processipout(uint8_t *buf, int len)
 	sessionidt s;
 	sessiont *sp;
 	tunnelidt t;
-	in_addr_t ip;
+	in_addr_t ip, ip_src;
 
 	uint8_t *data = buf;	// Keep a copy of the originals.
 	int size = len;
@@ -1450,6 +1451,7 @@ void processipout(uint8_t *buf, int len)
 		return;
 	}
 
+	ip_src = *(uint32_t *)(buf + 12);
 	ip = *(uint32_t *)(buf + 16);
 	if (!(s = sessionbyip(ip)))
 	{
@@ -1534,12 +1536,15 @@ void processipout(uint8_t *buf, int len)
 
 	if (sp->tbf_out)
 	{
-		// Are we throttling this session?
-		if (config->cluster_iam_master)
-			tbf_queue_packet(sp->tbf_out, data, size);
-		else
-			master_throttle_packet(sp->tbf_out, data, size);
-		return;
+		if (!config->no_throttle_local_IP || !sessionbyip(ip_src))
+		{
+			// Are we throttling this session?
+			if (config->cluster_iam_master)
+				tbf_queue_packet(sp->tbf_out, data, size);
+			else
+				master_throttle_packet(sp->tbf_out, data, size);
+			return;
+		}
 	}
 
 	if (sp->walled_garden && !config->cluster_iam_master)

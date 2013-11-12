@@ -1735,7 +1735,7 @@ static void update_sessions_in_stat(sessionidt s, uint16_t l)
 // (i.e. this routine writes to p[-4]).
 void processipin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 {
-	in_addr_t ip;
+	in_addr_t ip, ip_dst;
 
 	CSTAT(processipin);
 
@@ -1749,6 +1749,7 @@ void processipin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	}
 
 	ip = ntohl(*(uint32_t *)(p + 12));
+	ip_dst = *(uint32_t *)(p + 16);
 
 	if (l > MAXETHER)
 	{
@@ -1789,12 +1790,15 @@ void processipin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 	if (session[s].tbf_in)
 	{
-		// Are we throttling this session?
-		if (config->cluster_iam_master)
-			tbf_queue_packet(session[s].tbf_in, p, l);
-		else
-			master_throttle_packet(session[s].tbf_in, p, l);
-		return;
+		if (!config->no_throttle_local_IP || !sessionbyip(ip_dst))
+		{
+			// Are we throttling this session?
+			if (config->cluster_iam_master)
+				tbf_queue_packet(session[s].tbf_in, p, l);
+			else
+				master_throttle_packet(session[s].tbf_in, p, l);
+			return;
+		}
 	}
 
 	// send to ethernet

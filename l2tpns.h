@@ -783,6 +783,7 @@ typedef struct
 	int nbmultiaddress; // number multi address to bind
 	int indexlacudpfd;	// Index UDP LAC file handle (in udpfd[])
 	int nbmultihostname;	// number hostname, normally the same number as the nbudpfd
+	int no_throttle_local_IP;	// no throttle traffic from session to session
 	in_addr_t bind_n_address[MAX_BINDADDR];
 	in_addr_t iftun_n_address[MAX_BINDADDR];
 	char bind_multi_address[256];

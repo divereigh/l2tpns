@@ -2120,9 +2120,9 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 			free_ip_address(s);
 
 		// unroute IPv6, if setup
-		if (session[s].ppp.ipv6cp == Opened && session[s].ipv6prefixlen && del_routes)
+		if (session[s].ipv6route.s6_addr[0] && session[s].ipv6prefixlen && del_routes)
 			route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 0);
-		
+
 		if (b)
 		{
 			// This session was part of a bundle

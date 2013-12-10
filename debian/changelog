@@ -1,4 +1,10 @@
-l2tpns (2.2.1-2fdn3.11) UNRELEASED; urgency=low
+l2tpns (2.2.1-2fdn3.12) UNRELEASED; urgency=low
+
+  * Fix: remove old IPV6 routes on master
+
+ -- Fernando Alves <fendo@sameswifi.fr>  Tue, 10 Dec 2013 23:13:20 +0100
+
+l2tpns (2.2.1-2fdn3.11) unstable; urgency=low
 
   * Fix: throttle ipv6 out.
   * Fix: remove old IPV6 routes on slave
@@ -13,7 +19,7 @@ l2tpns (2.2.1-2fdn3.11) UNRELEASED; urgency=low
   * Add build-arch/build-indep targets to debian/rules
   * Fix: compiling Warning
 
- -- Fernando Alves <fernando.alves@sameswireless.fr>  Sun, 06 Oct 2013 10:38:53 +0200
+ -- Fernando Alves <fendo@sameswifi.fr>  Tue, 10 Dec 2013 23:08:45 +0100
 
 l2tpns (2.2.1-2fdn3.10) unstable; urgency=low
 

@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <netinet/ip6.h>
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "plugin.h"
 #include "control.h"

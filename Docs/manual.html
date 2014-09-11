@@ -60,29 +60,17 @@ H3 {
 </OL>
 
 <H2 ID="Overview">Overview</H2>
-l2tpns a complete L2TP implementation. It supports the LAC, LNS and
- PPPOE server.<P>
+l2tpns a complete L2TP implementation. It supports the LAC, LNS, PPPOE and DHCPv6 server.<P>
 
-L2TP (Layer 2 Tunneling Protocol) is designed to allow any layer 2
-protocol (e.g. Ethernet, PPP) to be tunneled over an IP connection.  l2tpns
-implements PPP over L2TP only.<P>
+L2TP (Layer 2 Tunneling Protocol) is designed to allow any layer 2 protocol (e.g. Ethernet, PPP) to be tunneled over an IP connection. l2tpns implements PPP over L2TP only.<P>
 
-There are a couple of other L2TP implementations, of which <A
-HREF="http://sourceforge.net/projects/l2tpd">l2tpd</A> is probably the
-most popular.  l2tpd also will handle being either end of a tunnel, and
-is a lot more configurable than l2tpns.  However, due to the way it works,
-it is nowhere near as scalable.<P>
+There are a couple of other L2TP implementations, of which <A HREF="http://sourceforge.net/projects/l2tpd">l2tpd</A> is probably the most popular.  l2tpd also will handle being either end of a tunnel, and is a lot more configurable than l2tpns.  However, due to the way it works, it is nowhere near as scalable.<P>
 
-l2tpns uses the TUN/TAP interface provided by the Linux kernel to receive
-and send packets.  Using some packet manipulation it doesn't require a
-single interface per connection, as l2tpd does.<P>
+l2tpns uses the TUN/TAP interface provided by the Linux kernel to receive and send packets.  Using some packet manipulation it doesn't require a single interface per connection, as l2tpd does.<P>
 
-This allows it to scale extremely well to very high loads and very high
-numbers of connections.<P>
+This allows it to scale extremely well to very high loads and very high numbers of connections.<P>
 
-It also has a plugin architecture which allows custom code to be run
-during processing.  An example of this is in the walled garden module
-included.<P>
+It also has a plugin architecture which allows custom code to be run during processing.  An example of this is in the walled garden module included.<P>
 
 <BR>
 <EM>Documentation is not my best skill.  If you find any problems
@@ -167,15 +155,15 @@ only ever be used for working out why it doesn't work at all.
 </LI>
 
 <LI><B>log_file</B> (string)<BR>
-This will be where all logging and debugging information is written
-to.  This may be either a filename, such as <EM>/var/log/l2tpns</EM>, or
-the special magic string <EM>syslog:facility</EM>, where <EM>facility</EM>
-is any one of the syslog logging facilities, such as local5.
+This will be where all logging and debugging information is written to. This may be either a filename, such as <EM>/var/log/l2tpns</EM>, or the special magic string <EM>syslog:facility</EM>, where <EM>facility</EM> is any one of the syslog logging facilities, such as local5.
 </LI>
 
 <LI><B>pid_file</B> (string)<BR>
-If set, the process id will be written to the specified file.  The
-value must be an absolute path.
+If set, the process id will be written to the specified file.  The value must be an absolute path.
+</LI>
+
+<LI><B>random_device</B>B> (string)<BR>
+Path to random data source (default /dev/urandom). Use "" to use the rand() library function.
 </LI>
 
 <LI><B>l2tp_secret</B> (string)<BR>
@@ -185,8 +173,7 @@ used if the LAC requests authentication.
 </LI>
 
 <LI><B>l2tp_mtu</B> (int)<BR>
-MTU of interface for L2TP traffic (default: 1500).  Used to set link
-MRU and adjust TCP MSS.
+MTU of interface for L2TP traffic (default: 1500). Used to set link MRU and adjust TCP MSS.
 </LI>
 
 <LI><B>ppp_restart_time</B> (int)<BR>
@@ -231,8 +218,7 @@ session is closed.
 </LI>
 
 <LI><B>radius_secret</B> (string)<BR>
-This secret will be used in all RADIUS queries.  If this is not set then
-RADIUS queries will fail.
+This secret will be used in all RADIUS queries. If this is not set then RADIUS queries will fail.
 </LI>
 
 <LI><B>radius_authtypes</B> (string)</BR>
@@ -252,11 +238,7 @@ session is established.
 </LI>
 
 <LI><B>bind_address</B> (ip address)<BR>
-It's the listen address of the l2tp udp protocol sent and received
-to LAC. This address is also assigned to the tun interface if no
-iftun_address is specified. Packets containing user traffic should be
-routed via this address if given, otherwise the primary address of the
-machine.
+It's the listen address of the l2tp udp protocol sent and received to LAC. This address is also assigned to the tun interface if no iftun_address is specified. Packets containing user traffic should be routed via this address if given, otherwise the primary address of the machine.
 </LI>
 
 <LI><B>iftun_address</B> (ip address)<BR>
@@ -280,7 +262,6 @@ for Address1 on LNS1 and a bgp.prepend(MY_AS) for Address2 on LNS2
 example of use with 2 address:
 <BR>
 set bind_multi_address "64.14.13.41, 64.14.13.42"
-
 </LI>
 
 <LI><B>tundevicename</B> (string)<BR>
@@ -323,11 +304,6 @@ uptxoctets, downrxoctets, origin (optional). The qos field is 1 if a standard us
 
 <LI><B>account_all_origin</B> (boolean)<BR>
 If set to true, all origin of the usage is dumped to the accounting file (LAC+Remote LNS+PPPOE)(default false).
-</LI>
-
-<LI><B>setuid</B> (int)<BR>
-After starting up and binding the interface, change UID to this.  This
-doesn't work properly.
 </LI>
 
 <LI><B>dump_speed</B> (boolean)<BR>

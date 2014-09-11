@@ -21,6 +21,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "bgp.h"
 #include "util.h"

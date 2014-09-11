@@ -22,6 +22,7 @@
 #include <arpa/inet.h>
 #include <linux/if_pppox.h>
 
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "cluster.h"
 #include "constants.h"

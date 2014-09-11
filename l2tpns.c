@@ -40,6 +40,7 @@
 #include <linux/rtnetlink.h>
 
 #include "md5.h"
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "cluster.h"
 #include "plugin.h"
@@ -55,6 +56,7 @@
 
 #include "l2tplac.h"
 #include "pppoe.h"
+#include "dhcp6.h"
 
 char * Vendor_name = "Linux L2TPNS";
 uint32_t call_serial_number = 0;
@@ -189,6 +191,12 @@ config_descriptt config_values[] = {
 	CONFIG("pppoe_only_equal_svc_name", pppoe_only_equal_svc_name, BOOL),
 	CONFIG("multi_hostname", multi_hostname, STRING),
 	CONFIG("no_throttle_local_IP", no_throttle_local_IP, BOOL),
+	CONFIG("dhcp6_preferred_lifetime", dhcp6_preferred_lifetime, INT),
+	CONFIG("dhcp6_valid_lifetime", dhcp6_valid_lifetime, INT),
+	CONFIG("dhcp6_server_duid", dhcp6_server_duid, INT),
+	CONFIG("primary_ipv6_dns", default_ipv6_dns1, IPv6),
+	CONFIG("secondary_ipv6_dns", default_ipv6_dns2, IPv6),
+	CONFIG("default_ipv6_domain_list", default_ipv6_domain_list, STRING),
 	{ NULL, 0, 0, 0 }
 };
 
@@ -2123,6 +2131,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 		if (session[s].ipv6route.s6_addr[0] && session[s].ipv6prefixlen && del_routes)
 			route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 0);
 
+		if (session[s].ipv6address.s6_addr[0] && del_routes)
+		{
+			route6set(s, session[s].ipv6address, 128, 0);
+		}
+
 		if (b)
 		{
 			// This session was part of a bundle
@@ -2178,6 +2191,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 						// IPV6 route
 						if (session[new_s].ipv6prefixlen)
 							cache_ipv6map(session[new_s].ipv6route, session[new_s].ipv6prefixlen, new_s);
+
+						if (session[new_s].ipv6address.s6_addr[0])
+						{
+							cache_ipv6map(session[new_s].ipv6address, 128, new_s);
+						}
 					}
 				}
 			}
@@ -3413,6 +3431,20 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 			{
 				master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
 				return;
+			}
+
+			if (!config->cluster_iam_master)
+			{
+				// Check if DhcpV6, IP dst: FF02::1:2, Src Port 0x0222 (546), Dst Port 0x0223 (547)
+				if (*(p + 6) == 17 && *(p + 24) == 0xFF && *(p + 25) == 2 &&
+						*(uint32_t *)(p + 26) == 0 && *(uint32_t *)(p + 30) == 0 &&
+						*(uint16_t *)(p + 34) == 0 && *(p + 36) == 0 && *(p + 37) == 1 && *(p + 38) == 0 && *(p + 39) == 2 &&
+						*(p + 40) == 2 && *(p + 41) == 0x22 && *(p + 42) == 2 && *(p + 43) == 0x23)
+				{
+					// DHCPV6 must be managed by the Master.
+					master_forward_packet(buf, len, addr->sin_addr.s_addr, addr->sin_port, indexudpfd);
+					return;
+				}
 			}
 
 			processipv6in(s, t, p, l);
@@ -5102,6 +5134,7 @@ int main(int argc, char *argv[])
 	init_tbf(config->num_tbfs);
 
 	LOG(0, 0, 0, "L2TPNS version " VERSION "\n");
+	LOG(0, 0, 0, "Copyright (c) 2012, 2013, 2014 ISP FDN & SAMESWIRELESS\n");
 	LOG(0, 0, 0, "Copyright (c) 2003, 2004, 2005, 2006 Optus Internet Engineering\n");
 	LOG(0, 0, 0, "Copyright (c) 2002 FireBrick (Andrews & Arnold Ltd / Watchfront Ltd) - GPL licenced\n");
 	{
@@ -5177,6 +5210,7 @@ int main(int argc, char *argv[])
 
 	initrad();
 	initippool();
+	dhcpv6_init();
 
 	// seed prng
 	{
@@ -5823,6 +5857,11 @@ int load_session(sessionidt s, sessiont *new)
 		if (session[s].ipv6route.s6_addr[0] && session[s].ipv6prefixlen)
 			route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 0);
 
+		if (session[s].ipv6address.s6_addr[0])
+		{
+			route6set(s, session[s].ipv6address, 128, 0);
+		}
+
 		routed = 0;
 
 		// add new routes...
@@ -5850,7 +5889,12 @@ int load_session(sessionidt s, sessiont *new)
 
 	// check v6 routing
 	if (new->ipv6prefixlen && new->ppp.ipv6cp == Opened && session[s].ppp.ipv6cp != Opened)
-		    route6set(s, new->ipv6route, new->ipv6prefixlen, 1);
+		route6set(s, new->ipv6route, new->ipv6prefixlen, 1);
+
+	if (new->ipv6address.s6_addr[0] && new->ppp.ipv6cp == Opened && session[s].ppp.ipv6cp != Opened)
+	{
+		route6set(s, new->ipv6address, 128, 1);
+	}
 
 	// check filters
 	if (new->filter_in && (new->filter_in > MAXFILTER || !ip_filters[new->filter_in - 1].name[0]))

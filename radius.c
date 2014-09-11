@@ -14,6 +14,7 @@
 
 #include "md5.h"
 #include "constants.h"
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "plugin.h"
 #include "util.h"
@@ -773,7 +774,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 						int prefixlen;
 						uint8_t *n = p + 2;
 						uint8_t *e = p + p[1];
-						uint8_t *m = memchr(n, '/', e - p);
+						uint8_t *m = memchr(n, '/', e - n);
 
 						*m++ = 0;
 						inet_pton(AF_INET6, (char *) n, &r6);
@@ -790,6 +791,28 @@ void processrad(uint8_t *buf, int len, char socket_index)
 								n, prefixlen);
 							session[s].ipv6route = r6;
 							session[s].ipv6prefixlen = prefixlen;
+						}
+					}
+					else if (*p == 123)
+					{
+						// Delegated-IPv6-Prefix
+						if ((p[1] > 4) && (p[3] > 0) && (p[3] <= 128))
+						{
+							char ipv6addr[INET6_ADDRSTRLEN];
+							memcpy(&session[s].ipv6route, &p[4], p[1] - 4);
+							session[s].ipv6prefixlen = p[3];
+							LOG(3, s, session[s].tunnel, "   Radius reply contains Delegated IPv6 Prefix %s/%d\n",
+								inet_ntop(AF_INET6, &session[s].ipv6route, ipv6addr, INET6_ADDRSTRLEN), session[s].ipv6prefixlen);
+						}
+					}
+					else if (*p == 168)
+					{
+						// Framed-IPv6-Address
+						if (p[1] == 18)
+						{
+							char ipv6addr[INET6_ADDRSTRLEN];
+							memcpy(&session[s].ipv6address, &p[2], 16);
+							LOG(3, s, session[s].tunnel, "   Radius reply contains Framed-IPv6-Address %s\n", inet_ntop(AF_INET6, &session[s].ipv6address, ipv6addr, INET6_ADDRSTRLEN));
 						}
 					}
 					else if (*p == 25)

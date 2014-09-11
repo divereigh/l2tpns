@@ -1,4 +1,10 @@
-l2tpns (2.2.1-2fdn3.12) UNRELEASED; urgency=low
+l2tpns (2.2.1-2fdn3.13) unstable; urgency=low
+
+  * Add DHCPv6 functionality
+
+ -- Fernando Alves <fendo@sameswifi.fr>  Thu, 11 Sep 2014 16:10:38 +0200
+
+l2tpns (2.2.1-2fdn3.12) unstable; urgency=low
 
   * Fix: remove old IPV6 routes on master
 

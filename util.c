@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/mman.h>
 
+#include "dhcp6.h"
 #include "l2tpns.h"
 #ifdef BGP
 #include "bgp.h"

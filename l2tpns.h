@@ -15,7 +15,7 @@
 #include <sys/types.h>
 #include <libcli.h>
 
-#define VERSION	"2.2.1"
+#define VERSION	"2.2.1-2fdn3.13"
 
 // Limits
 #define MAXTUNNEL	500		// could be up to 65535
@@ -333,6 +333,10 @@ typedef struct
 	struct in6_addr ipv6route;	// Static IPv6 route
 	sessionidt forwardtosession;	// LNS id_session to forward
 	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
+	uint32_t dhcpv6_prefix_iaid;	// prefix iaid requested by client
+	uint32_t dhcpv6_iana_iaid;		// iaid of iana requested by client
+	struct in6_addr ipv6address;	// Framed Ipv6 address
+	struct dhcp6_opt_clientid dhcpv6_client_id; // Size max (headers + DUID)
 	char reserved[4];		// Space to expand structure without changing HB_VERSION
 }
 sessiont;
@@ -620,6 +624,7 @@ struct Tstats
     uint32_t	call_radiussend;
     uint32_t	call_radiusretry;
     uint32_t    call_random_data;
+    uint32_t    call_dhcpv6_process;
 #endif
 };
 
@@ -789,6 +794,12 @@ typedef struct
 	char bind_multi_address[256];
 	char multi_hostname[512];
 	char multi_n_hostname[MAX_NBHOSTNAME][MAXHOSTNAME];	// list hostname
+	struct in6_addr default_ipv6_dns1;
+	struct in6_addr default_ipv6_dns2;
+	uint32_t dhcp6_preferred_lifetime;		// preferred lifetime (see rfc3315)
+	uint32_t dhcp6_valid_lifetime;		// valid lifetime (see rfc3315)
+	uint32_t dhcp6_server_duid;		// DUID of dhcpv6 server (see rfc3315)
+	char default_ipv6_domain_list[255];
 } configt;
 
 enum config_typet { INT, STRING, UNSIGNED_LONG, SHORT, BOOL, IPv4, IPv6 };

@@ -1,6 +1,8 @@
 // L2TPNS: token bucket filters
 
 #include <string.h>
+#include <netinet/ip6.h>
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "util.h"
 #include "tbf.h"

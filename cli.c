@@ -22,6 +22,7 @@
 #include <netdb.h>
 #include <libcli.h>
 
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "constants.h"
 #include "util.h"

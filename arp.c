@@ -5,7 +5,9 @@
 #include <net/ethernet.h>
 #include <net/if_arp.h>
 #include <linux/if_packet.h>
+#include <netinet/ip6.h>
 
+#include "dhcp6.h"
 #include "l2tpns.h"
 
 /* Most of this code is based on keepalived:vrrp_arp.c */

@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <libcli.h>
 
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "cluster.h"
 #include "util.h"
@@ -842,7 +843,7 @@ static int hb_add_type(uint8_t **p, int type, int id)
 			// Failed to compress : Fall through.
 		}
 		case C_SESSION:
-		    	add_type(p, C_SESSION, id, (uint8_t *) &session[id], sizeof(sessiont));
+			add_type(p, C_SESSION, id, (uint8_t *) &session[id], sizeof(sessiont));
 			break;
 
 		case C_CBUNDLE: { // Compressed C_BUNDLE
@@ -883,7 +884,7 @@ static int hb_add_type(uint8_t **p, int type, int id)
 			// Failed to compress : Fall through.
 		}
 		case C_TUNNEL:
-		    	add_type(p, C_TUNNEL, id, (uint8_t *) &tunnel[id], sizeof(tunnelt));
+			add_type(p, C_TUNNEL, id, (uint8_t *) &tunnel[id], sizeof(tunnelt));
 			break;
 		default:
 			LOG(0, 0, 0, "Found an invalid type in heart queue! (%d)\n", type);
@@ -1504,11 +1505,11 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 	int i, type;
 	int hb_ver = more;
 
-#if HB_VERSION != 7
+#if HB_VERSION != 8
 # error "need to update cluster_process_heartbeat()"
 #endif
 
-	// we handle versions 5 through 7
+	// we handle versions 5 through 8
 	if (hb_ver < 5 || hb_ver > HB_VERSION) {
 		LOG(0, 0, 0, "Received a heartbeat version that I don't support (%d)!\n", hb_ver);
 		return -1; // Ignore it??
@@ -1681,10 +1682,18 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 					break;
 				}
 
-				if (size != sizeof(sessiont) ) { // Ouch! Very very bad!
-					LOG(0, 0, 0, "DANGER: Received a CSESSION that didn't decompress correctly!\n");
-						// Now what? Should exit! No-longer up to date!
-					break;
+				if (size != sizeof(sessiont)) { // Ouch! Very very bad!
+					if ((hb_ver < HB_VERSION) && (size < sizeof(sessiont)))
+					{
+						LOG(2, 0, 0, "WARNING: Received a CSESSION from %s hb_version %d != %d current version !\n", fmtaddr(addr, 2), hb_ver, HB_VERSION);
+						// New feature not activated until the master has not been upgraded.
+					}
+					else
+					{
+						LOG(0, 0, 0, "DANGER: Received a CSESSION that didn't decompress correctly!\n");
+							// Now what? Should exit! No-longer up to date!
+						break;
+					}
 				}
 
 				cluster_recv_session(more, c);

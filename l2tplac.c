@@ -7,8 +7,10 @@
 
 #include <errno.h>
 #include <string.h>
+#include <netinet/ip6.h>
 
 #include "md5.h"
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "util.h"
 #include "cluster.h"

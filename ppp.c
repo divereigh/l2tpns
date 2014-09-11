@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <netinet/ip6.h>
+#include "dhcp6.h"
 #include "l2tpns.h"
 #include "constants.h"
 #include "plugin.h"
@@ -1483,6 +1485,13 @@ static void ipv6cp_open(sessionidt s, tunnelidt t)
 	if (session[s].ipv6prefixlen)
 		route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 1);
 
+	if (session[s].ipv6address.s6_addr[0])
+	{
+		// Check if included in prefix
+		if (sessionbyipv6(session[s].ipv6address) != s)
+			route6set(s, session[s].ipv6address, 128, 1);
+	}
+
 	// Send an initial RA (TODO: Should we send these regularly?)
 	send_ipv6_ra(s, t, NULL);
 }
@@ -2257,6 +2266,16 @@ void processipv6in(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 			*(p + 38) == 0 && *(p + 39) == 2 && *(p + 40) == 133) {
 		LOG(3, s, t, "Got IPv6 RS\n");
 		send_ipv6_ra(s, t, &ip);
+		return;
+	}
+
+	// Check if DhcpV6, IP dst: FF02::1:2, Src Port 0x0222 (546), Dst Port 0x0223 (547)
+	if (*(p + 6) == 17 && *(p + 24) == 0xFF && *(p + 25) == 2 &&
+			*(uint32_t *)(p + 26) == 0 && *(uint32_t *)(p + 30) == 0 &&
+			*(uint16_t *)(p + 34) == 0 && *(p + 36) == 0 && *(p + 37) == 1 && *(p + 38) == 0 && *(p + 39) == 2 &&
+			*(p + 40) == 2 && *(p + 41) == 0x22 && *(p + 42) == 2 && *(p + 43) == 0x23)
+	{
+		dhcpv6_process(s, t, p, l);
 		return;
 	}
 

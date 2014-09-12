@@ -5893,7 +5893,9 @@ int load_session(sessionidt s, sessiont *new)
 
 	if (new->ipv6address.s6_addr[0] && new->ppp.ipv6cp == Opened && session[s].ppp.ipv6cp != Opened)
 	{
-		route6set(s, new->ipv6address, 128, 1);
+		// Check if included in prefix
+		if (sessionbyipv6(new->ipv6address) != s)
+			route6set(s, new->ipv6address, 128, 1);
 	}
 
 	// check filters

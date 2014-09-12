@@ -1685,7 +1685,9 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 				if (size != sizeof(sessiont)) { // Ouch! Very very bad!
 					if ((hb_ver < HB_VERSION) && (size < sizeof(sessiont)))
 					{
-						LOG(2, 0, 0, "WARNING: Received a CSESSION from %s hb_version %d != %d current version !\n", fmtaddr(addr, 2), hb_ver, HB_VERSION);
+						// set to 0 the unused variables
+						memset(&c[size], 0, (sizeof(sessiont) - size));
+						LOG(3, 0, 0, "WARNING: Received a CSESSION from %s hb_version %d != %d current version !\n", fmtaddr(addr, 2), hb_ver, HB_VERSION);
 						// New feature not activated until the master has not been upgraded.
 					}
 					else

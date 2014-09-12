@@ -1,3 +1,10 @@
+l2tpns (2.2.1-2fdn3.14) unstable; urgency=low
+
+  * Fix cluster slave; reset to 0, the end of the session when the master version < slave version.
+  * Fix cluster slave; no add the ipv6 route address (/128) if included in the delegated prefix.
+
+ -- Fernando Alves <fendo@sameswifi.fr>  Fri, 12 Sep 2014 18:21:53 +0200
+
 l2tpns (2.2.1-2fdn3.13) unstable; urgency=low
 
   * Add DHCPv6 functionality

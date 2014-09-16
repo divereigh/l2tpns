@@ -1479,11 +1479,14 @@ void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 static void ipv6cp_open(sessionidt s, tunnelidt t)
 {
+	int i;
 	LOG(3, s, t, "IPV6CP: Opened\n");
 
 	change_state(s, ipv6cp, Opened);
-	if (session[s].ipv6prefixlen)
-		route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 1);
+	for (i = 0; i < MAXROUTE6 && session[s].route6[i].ipv6prefixlen; i++)
+	{
+		route6set(s, session[s].route6[i].ipv6route, session[s].route6[i].ipv6prefixlen, 1);
+	}
 
 	if (session[s].ipv6address.s6_addr[0])
 	{

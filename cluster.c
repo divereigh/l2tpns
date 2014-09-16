@@ -1425,6 +1425,128 @@ struct oldsession {
 	char reserved_3[11];
 };
 
+struct oldsessionV7 {
+	sessionidt next;		// next session in linked list
+	sessionidt far;			// far end session ID
+	tunnelidt tunnel;		// near end tunnel ID
+	uint8_t flags;			// session flags: see SESSION_*
+	struct {
+		uint8_t phase;		// PPP phase
+		uint8_t lcp:4;		//   LCP    state
+		uint8_t ipcp:4;		//   IPCP   state
+		uint8_t ipv6cp:4;	//   IPV6CP state
+		uint8_t ccp:4;		//   CCP    state
+	} ppp;
+	uint16_t mru;			// maximum receive unit
+	in_addr_t ip;			// IP of session set by RADIUS response (host byte order).
+	int ip_pool_index;		// index to IP pool
+	uint32_t unique_id;		// unique session id
+	uint32_t magic;			// ppp magic number
+	uint32_t pin, pout;		// packet counts
+	uint32_t cin, cout;		// byte counts
+	uint32_t cin_wrap, cout_wrap;	// byte counter wrap count (RADIUS accounting giagawords)
+	uint32_t cin_delta, cout_delta;	// byte count changes (for dump_session())
+	uint16_t throttle_in;		// upstream throttle rate (kbps)
+	uint16_t throttle_out;		// downstream throttle rate
+	uint8_t filter_in;		// input filter index (to ip_filters[N-1]; 0 if none)
+	uint8_t filter_out;		// output filter index
+	uint16_t snoop_port;		// Interception destination port
+	in_addr_t snoop_ip;		// Interception destination IP
+	clockt opened;			// when started
+	clockt die;			// being closed, when to finally free
+	uint32_t session_timeout;	// Maximum session time in seconds
+	uint32_t idle_timeout;		// Maximum idle time in seconds
+	time_t last_packet;		// Last packet from the user (used for idle timeouts)
+	time_t last_data;		// Last data packet to/from the user (used for idle timeouts)
+	in_addr_t dns1, dns2;		// DNS servers
+	routet route[MAXROUTE];		// static routes
+	uint16_t tbf_in;		// filter bucket for throttling in from the user.
+	uint16_t tbf_out;		// filter bucket for throttling out to the user.
+	int random_vector_length;
+	uint8_t random_vector[MAXTEL];
+	char user[MAXUSER];		// user (needed in session for radius stop messages)
+	char called[MAXTEL];		// called number
+	char calling[MAXTEL];		// calling number
+	uint32_t tx_connect_speed;
+	uint32_t rx_connect_speed;
+	clockt timeout;                 // Session timeout
+	uint32_t mrru;                  // Multilink Max-Receive-Reconstructed-Unit
+	epdist epdis;                   // Multilink Endpoint Discriminator
+	bundleidt bundle;               // Multilink Bundle Identifier
+	uint8_t mssf;                   // Multilink Short Sequence Number Header Format
+	uint8_t walled_garden;		// is this session gardened?
+	uint8_t classlen;		// class (needed for radius accounting messages)
+	char class[MAXCLASS];
+	uint8_t ipv6prefixlen;		// IPv6 route prefix length
+	struct in6_addr ipv6route;	// Static IPv6 route
+	sessionidt forwardtosession;	// LNS id_session to forward
+	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
+	char reserved[4];		// Space to expand structure without changing HB_VERSION
+};
+
+struct oldsessionV8 {
+	sessionidt next;		// next session in linked list
+	sessionidt far;			// far end session ID
+	tunnelidt tunnel;		// near end tunnel ID
+	uint8_t flags;			// session flags: see SESSION_*
+	struct {
+		uint8_t phase;		// PPP phase
+		uint8_t lcp:4;		//   LCP    state
+		uint8_t ipcp:4;		//   IPCP   state
+		uint8_t ipv6cp:4;	//   IPV6CP state
+		uint8_t ccp:4;		//   CCP    state
+	} ppp;
+	uint16_t mru;			// maximum receive unit
+	in_addr_t ip;			// IP of session set by RADIUS response (host byte order).
+	int ip_pool_index;		// index to IP pool
+	uint32_t unique_id;		// unique session id
+	uint32_t magic;			// ppp magic number
+	uint32_t pin, pout;		// packet counts
+	uint32_t cin, cout;		// byte counts
+	uint32_t cin_wrap, cout_wrap;	// byte counter wrap count (RADIUS accounting giagawords)
+	uint32_t cin_delta, cout_delta;	// byte count changes (for dump_session())
+	uint16_t throttle_in;		// upstream throttle rate (kbps)
+	uint16_t throttle_out;		// downstream throttle rate
+	uint8_t filter_in;		// input filter index (to ip_filters[N-1]; 0 if none)
+	uint8_t filter_out;		// output filter index
+	uint16_t snoop_port;		// Interception destination port
+	in_addr_t snoop_ip;		// Interception destination IP
+	clockt opened;			// when started
+	clockt die;			// being closed, when to finally free
+	uint32_t session_timeout;	// Maximum session time in seconds
+	uint32_t idle_timeout;		// Maximum idle time in seconds
+	time_t last_packet;		// Last packet from the user (used for idle timeouts)
+	time_t last_data;		// Last data packet to/from the user (used for idle timeouts)
+	in_addr_t dns1, dns2;		// DNS servers
+	routet route[MAXROUTE];		// static routes
+	uint16_t tbf_in;		// filter bucket for throttling in from the user.
+	uint16_t tbf_out;		// filter bucket for throttling out to the user.
+	int random_vector_length;
+	uint8_t random_vector[MAXTEL];
+	char user[MAXUSER];		// user (needed in session for radius stop messages)
+	char called[MAXTEL];		// called number
+	char calling[MAXTEL];		// calling number
+	uint32_t tx_connect_speed;
+	uint32_t rx_connect_speed;
+	clockt timeout;                 // Session timeout
+	uint32_t mrru;                  // Multilink Max-Receive-Reconstructed-Unit
+	epdist epdis;                   // Multilink Endpoint Discriminator
+	bundleidt bundle;               // Multilink Bundle Identifier
+	uint8_t mssf;                   // Multilink Short Sequence Number Header Format
+	uint8_t walled_garden;		// is this session gardened?
+	uint8_t classlen;		// class (needed for radius accounting messages)
+	char class[MAXCLASS];
+	uint8_t ipv6prefixlen;		// IPv6 route prefix length
+	struct in6_addr ipv6route;	// Static IPv6 route
+	sessionidt forwardtosession;	// LNS id_session to forward
+	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
+	uint32_t dhcpv6_prefix_iaid;	// prefix iaid requested by client
+	uint32_t dhcpv6_iana_iaid;		// iaid of iana requested by client
+	struct in6_addr ipv6address;	// Framed Ipv6 address
+	struct dhcp6_opt_clientid dhcpv6_client_id; // Size max (headers + DUID)
+	char reserved[4];		// Space to expand structure without changing HB_VERSION
+};
+
 static uint8_t *convert_session(struct oldsession *old)
 {
 	static sessiont new;
@@ -1479,8 +1601,8 @@ static uint8_t *convert_session(struct oldsession *old)
 	new.snoop_ip = old->snoop_ip;
 	new.snoop_port = old->snoop_port;
 	new.walled_garden = old->walled_garden;
-	new.ipv6prefixlen = old->ipv6prefixlen;
-	new.ipv6route = old->ipv6route;
+	new.route6[0].ipv6prefixlen = old->ipv6prefixlen;
+	new.route6[0].ipv6route = old->ipv6route;
 
 	memcpy(new.random_vector, old->random_vector, sizeof(new.random_vector));
 	memcpy(new.user, old->user, sizeof(new.user));
@@ -1489,6 +1611,152 @@ static uint8_t *convert_session(struct oldsession *old)
 
 	for (i = 0; i < MAXROUTE; i++)
 		memcpy(&new.route[i], &old->route[i], sizeof(new.route[i]));
+
+	return (uint8_t *) &new;
+}
+
+static uint8_t *convert_sessionV7(struct oldsessionV7 *old)
+{
+	static sessiont new;
+	int i;
+
+	memset(&new, 0, sizeof(new));
+
+	new.next = old->next;
+	new.far = old->far;
+	new.tunnel = old->tunnel;
+	new.flags = old->flags;
+	new.ppp.phase = old->ppp.phase;
+	new.ppp.lcp = old->ppp.lcp;
+	new.ppp.ipcp = old->ppp.ipcp;
+	new.ppp.ipv6cp = old->ppp.ipv6cp;
+	new.ppp.ccp = old->ppp.ccp;
+	new.mru = old->mru;
+	new.ip = old->ip;
+	new.ip_pool_index = old->ip_pool_index;
+	new.unique_id = old->unique_id;
+	new.magic = old->magic;
+	new.pin = old->pin;
+	new.pout = old->pout;
+	new.cin = old->cin;
+	new.cout = old->cout;
+	new.cin_wrap = old->cin_wrap;
+	new.cout_wrap = old->cout_wrap;
+	new.cin_delta = old->cin_delta;
+	new.cout_delta = old->cout_delta;
+	new.throttle_in = old->throttle_in;
+	new.throttle_out = old->throttle_out;
+	new.filter_in = old->filter_in;
+	new.filter_out = old->filter_out;
+	new.snoop_port = old->snoop_port;
+	new.snoop_ip = old->snoop_ip;
+	new.opened = old->opened;
+	new.die = old->die;
+	new.session_timeout = old->session_timeout;
+	new.idle_timeout = old->idle_timeout;
+	new.last_packet = old->last_packet;
+	new.last_data = old->last_data;
+	new.dns1 = old->dns1;
+	new.dns2 = old->dns2;
+	for (i = 0; i < MAXROUTE; i++)
+		memcpy(&new.route[i], &old->route[i], sizeof(new.route[i]));
+	new.tbf_in = old->tbf_in;
+	new.tbf_out = old->tbf_out;
+	new.random_vector_length = old->random_vector_length;
+	memcpy(new.random_vector, old->random_vector, sizeof(new.random_vector));
+	memcpy(new.user, old->user, sizeof(new.user));
+	memcpy(new.called, old->called, sizeof(new.called));
+	memcpy(new.calling, old->calling, sizeof(new.calling));
+	new.tx_connect_speed = old->tx_connect_speed;
+	new.rx_connect_speed = old->rx_connect_speed;
+	new.timeout = old->timeout;
+	new.mrru = old->mrru;
+	new.epdis = old->epdis;
+	new.bundle = old->bundle;
+	new.mssf = old->mssf;
+	new.walled_garden = old->walled_garden;
+	new.classlen = old->classlen;
+	memcpy(new.class, old->class, sizeof(new.class));
+	new.route6[0].ipv6prefixlen = old->ipv6prefixlen;
+	new.route6[0].ipv6route = old->ipv6route;
+
+	new.forwardtosession = old->forwardtosession;
+	memcpy(new.src_hwaddr, old->src_hwaddr, sizeof(new.src_hwaddr));
+
+	return (uint8_t *) &new;
+}
+
+static uint8_t *convert_sessionV8(struct oldsessionV8 *old)
+{
+	static sessiont new;
+	int i;
+
+	memset(&new, 0, sizeof(new));
+
+	new.next = old->next;
+	new.far = old->far;
+	new.tunnel = old->tunnel;
+	new.flags = old->flags;
+	new.ppp.phase = old->ppp.phase;
+	new.ppp.lcp = old->ppp.lcp;
+	new.ppp.ipcp = old->ppp.ipcp;
+	new.ppp.ipv6cp = old->ppp.ipv6cp;
+	new.ppp.ccp = old->ppp.ccp;
+	new.mru = old->mru;
+	new.ip = old->ip;
+	new.ip_pool_index = old->ip_pool_index;
+	new.unique_id = old->unique_id;
+	new.magic = old->magic;
+	new.pin = old->pin;
+	new.pout = old->pout;
+	new.cin = old->cin;
+	new.cout = old->cout;
+	new.cin_wrap = old->cin_wrap;
+	new.cout_wrap = old->cout_wrap;
+	new.cin_delta = old->cin_delta;
+	new.cout_delta = old->cout_delta;
+	new.throttle_in = old->throttle_in;
+	new.throttle_out = old->throttle_out;
+	new.filter_in = old->filter_in;
+	new.filter_out = old->filter_out;
+	new.snoop_port = old->snoop_port;
+	new.snoop_ip = old->snoop_ip;
+	new.opened = old->opened;
+	new.die = old->die;
+	new.session_timeout = old->session_timeout;
+	new.idle_timeout = old->idle_timeout;
+	new.last_packet = old->last_packet;
+	new.last_data = old->last_data;
+	new.dns1 = old->dns1;
+	new.dns2 = old->dns2;
+	for (i = 0; i < MAXROUTE; i++)
+		memcpy(&new.route[i], &old->route[i], sizeof(new.route[i]));
+	new.tbf_in = old->tbf_in;
+	new.tbf_out = old->tbf_out;
+	new.random_vector_length = old->random_vector_length;
+	memcpy(new.random_vector, old->random_vector, sizeof(new.random_vector));
+	memcpy(new.user, old->user, sizeof(new.user));
+	memcpy(new.called, old->called, sizeof(new.called));
+	memcpy(new.calling, old->calling, sizeof(new.calling));
+	new.tx_connect_speed = old->tx_connect_speed;
+	new.rx_connect_speed = old->rx_connect_speed;
+	new.timeout = old->timeout;
+	new.mrru = old->mrru;
+	new.epdis = old->epdis;
+	new.bundle = old->bundle;
+	new.mssf = old->mssf;
+	new.walled_garden = old->walled_garden;
+	new.classlen = old->classlen;
+	memcpy(new.class, old->class, sizeof(new.class));
+	new.route6[0].ipv6prefixlen = old->ipv6prefixlen;
+	new.route6[0].ipv6route = old->ipv6route;
+
+	new.forwardtosession = old->forwardtosession;
+	memcpy(new.src_hwaddr, old->src_hwaddr, sizeof(new.src_hwaddr));
+	new.dhcpv6_prefix_iaid = old->dhcpv6_prefix_iaid;
+	new.dhcpv6_iana_iaid = old->dhcpv6_iana_iaid;
+	new.ipv6address = old->ipv6address;
+	new.dhcpv6_client_id = old->dhcpv6_client_id;
 
 	return (uint8_t *) &new;
 }
@@ -1505,7 +1773,7 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 	int i, type;
 	int hb_ver = more;
 
-#if HB_VERSION != 8
+#if HB_VERSION != 9
 # error "need to update cluster_process_heartbeat()"
 #endif
 
@@ -1685,10 +1953,13 @@ static int cluster_process_heartbeat(uint8_t *data, int size, int more, uint8_t 
 				if (size != sizeof(sessiont)) { // Ouch! Very very bad!
 					if ((hb_ver < HB_VERSION) && (size < sizeof(sessiont)))
 					{
-						// set to 0 the unused variables
-						memset(&c[size], 0, (sizeof(sessiont) - size));
-						LOG(3, 0, 0, "WARNING: Received a CSESSION from %s hb_version %d != %d current version !\n", fmtaddr(addr, 2), hb_ver, HB_VERSION);
-						// New feature not activated until the master has not been upgraded.
+						if ((hb_ver == 7) && (size == sizeof(struct oldsessionV7)))
+							cluster_recv_session(more, convert_sessionV7((struct oldsessionV7 *) c));
+						else if (size == sizeof(struct oldsessionV8))
+							cluster_recv_session(more, convert_sessionV8((struct oldsessionV8 *) c));
+						else
+							LOG(0, 0, 0, "DANGER: Received a CSESSION version=%d that didn't decompress correctly!\n", hb_ver);
+						break;
 					}
 					else
 					{

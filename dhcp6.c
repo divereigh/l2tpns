@@ -98,21 +98,33 @@ static void dhcp6_send_reply(sessionidt s, tunnelidt t, struct in6_addr *ip6_src
 		}
 		else
 		{
+			struct dhcp6_opt_h *p_opt_head;
+			int r;
+			uint16_t lenopt;
+
 			if (list_option.p_mess_hdr->type == DHCP6_REQUEST || list_option.p_opt_rapidcommit)
 			{
 				session[s].dhcpv6_prefix_iaid = ((struct dhcp6_opt_ia_pd *)list_option.p_opt_ia_pd)->iaid;
 			}
 
-			p_opt->len = htons(sizeof(struct dhcp6_opt_ia_pd) - sizeof(*p_opt) + sizeof(struct dhcp6_opt_ia_prefix));
+			p_opt_head = p_opt;
+			lenopt = sizeof(struct dhcp6_opt_ia_pd) - sizeof(*p_opt);
+
 			p_opt = (struct dhcp6_opt_h *) &((struct dhcp6_opt_ia_pd *)p_opt)[1];
 
-			((struct dhcp6_opt_ia_prefix *)p_opt)->hdr.code = htons(D6_OPT_IAPREFIX);
-			((struct dhcp6_opt_ia_prefix *)p_opt)->hdr.len = htons(sizeof(struct dhcp6_opt_ia_prefix) - sizeof(*p_opt));
-			((struct dhcp6_opt_ia_prefix *)p_opt)->pref_lifetime= (config->dhcp6_preferred_lifetime > 0) ? htonl(config->dhcp6_preferred_lifetime) : 0xFFFFFFFF;
-			((struct dhcp6_opt_ia_prefix *)p_opt)->valid_lifetime= (config->dhcp6_valid_lifetime > 0) ? htonl(config->dhcp6_valid_lifetime) : 0xFFFFFFFF;
-			((struct dhcp6_opt_ia_prefix *)p_opt)->prefix_len = session[s].ipv6prefixlen;
-			((struct dhcp6_opt_ia_prefix *)p_opt)->prefix = session[s].ipv6route;
-			 p_opt = (struct dhcp6_opt_h *) &((struct dhcp6_opt_ia_prefix *)p_opt)[1]; // next option
+			for (r = 0; r < MAXROUTE6 && session[s].route6[r].ipv6route.s6_addr[0] && session[s].route6[r].ipv6prefixlen; r++)
+			{
+				((struct dhcp6_opt_ia_prefix *)p_opt)->hdr.code = htons(D6_OPT_IAPREFIX);
+				((struct dhcp6_opt_ia_prefix *)p_opt)->hdr.len = htons(sizeof(struct dhcp6_opt_ia_prefix) - sizeof(*p_opt));
+				((struct dhcp6_opt_ia_prefix *)p_opt)->pref_lifetime= (config->dhcp6_preferred_lifetime > 0) ? htonl(config->dhcp6_preferred_lifetime) : 0xFFFFFFFF;
+				((struct dhcp6_opt_ia_prefix *)p_opt)->valid_lifetime= (config->dhcp6_valid_lifetime > 0) ? htonl(config->dhcp6_valid_lifetime) : 0xFFFFFFFF;
+				((struct dhcp6_opt_ia_prefix *)p_opt)->prefix_len = session[s].route6[r].ipv6prefixlen;
+				((struct dhcp6_opt_ia_prefix *)p_opt)->prefix = session[s].route6[r].ipv6route;
+
+				 p_opt = (struct dhcp6_opt_h *) &((struct dhcp6_opt_ia_prefix *)p_opt)[1]; // next option
+				 lenopt += sizeof(struct dhcp6_opt_ia_prefix);
+			}
+			p_opt_head->len = htons(lenopt);
 		}
 	}
 
@@ -257,6 +269,46 @@ static void dhcp6_send_reply(sessionidt s, tunnelidt t, struct in6_addr *ip6_src
 	tunnelsend(b, len + (((uint8_t *) p_ip6_hdr)-b), t); // send it...
 }
 
+static char * get_msg_type(uint8_t type)
+{
+	switch(type)
+	{
+		case DHCP6_SOLICIT:
+		{
+			return "Solicit";
+		}
+		break;
+
+		case DHCP6_REQUEST:
+			return "Request";
+		break;
+
+		case DHCP6_RENEW:
+			return "Renew";
+		break;
+
+		case DHCP6_INFORMATION_REQUEST:
+			return "Information Request";
+		break;
+
+		case DHCP6_REBIND:
+			return "Rebind";
+		break;
+
+		case DHCP6_RELEASE:
+			return "Release";
+		break;
+
+		case DHCP6_DECLINE:
+			return "Decline";
+		break;
+
+		default:
+			return "Unknown";
+		break;
+	}
+}
+
 void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 {
 	struct ip6_hdr *p_ip6_hdr_in;
@@ -270,9 +322,9 @@ void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	p_ip6_hdr_in = (struct ip6_hdr *) p;
 	p_mess_hdr = (struct dhcp6_mess_hdr *) (p + 48);
 
-	LOG(3, s, t, "Got DHCPv6 message Type: %d\n", p_mess_hdr->type);
+	LOG(3, s, t, "Got DHCPv6 message Type: %s(%d)\n", get_msg_type(p_mess_hdr->type), p_mess_hdr->type);
 
-	if (!session[s].ipv6route.s6_addr[0] || !session[s].ipv6prefixlen)
+	if (!session[s].route6[0].ipv6route.s6_addr[0] || !session[s].route6[0].ipv6prefixlen)
 		return;
 
 	p_opt = (struct dhcp6_opt_h *) &p_mess_hdr[1];
@@ -326,8 +378,6 @@ void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	{
 		case DHCP6_SOLICIT:
 		{
-			LOG(3, s, t, "..(Type %d = Solicit)\n", p_mess_hdr->type);
-
 			if (!list_option.p_opt_clientid)
 			{
 				LOG(3, s, t, "DHCPv6: error no Client-ID\n");
@@ -369,8 +419,6 @@ void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 		case DHCP6_REQUEST:
 		{
-			LOG(3, s, t, "..(Type %d = Request)\n", p_mess_hdr->type);
-
 			if (!list_option.p_opt_clientid)
 			{
 				LOG(3, s, t, "DHCPv6: error no Client-ID\n");
@@ -416,8 +464,6 @@ void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 		case DHCP6_RENEW:
 		{
-			LOG(3, s, t, "..(Type %d = Renew)\n", p_mess_hdr->type);
-
 			if (!list_option.p_opt_clientid)
 			{
 				LOG(3, s, t, "DHCPv6: error no Client-ID\n");
@@ -448,8 +494,6 @@ void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 		case DHCP6_INFORMATION_REQUEST:
 		{
-			LOG(3, s, t, "..(Type %d = Information Request)\n", p_mess_hdr->type);
-
 			if (!list_option.p_opt_clientid)
 			{
 				LOG(3, s, t, "DHCPv6: error no Client-ID\n");
@@ -462,24 +506,20 @@ void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 		case DHCP6_REBIND:
 		{
-			LOG(3, s, t, "..(Type %d = Rebind)\n", p_mess_hdr->type);
 		}
 		break;
 
 		case DHCP6_RELEASE:
 		{
-			LOG(3, s, t, "..(Type %d = Release)\n", p_mess_hdr->type);
 		}
 		break;
 
 		case DHCP6_DECLINE:
 		{
-			LOG(3, s, t, "..(Type %d = Decline)\n", p_mess_hdr->type);
 		}
 		break;
 
 		default:
-			LOG(3, s, t, "Got unknown DHCPv6 Type: %d\n", *(p + 38));
 		break;
 	}
 

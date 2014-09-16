@@ -49,6 +49,7 @@
 #define MAXPLUGINS	20		// maximum number of plugins to load
 #define MAXRADSERVER	10		// max radius servers
 #define MAXROUTE	10		// max static routes per session
+#define MAXROUTE6	5		// max static Ipv6 routes per session
 #define MAXIPPOOL	131072		// max number of ip addresses in pool
 #define RINGBUFFER_SIZE	10000		// Number of ringbuffer entries to allocate
 #define MAX_LOG_LENGTH	512		// Maximum size of log message
@@ -252,6 +253,14 @@ typedef struct			// route
 }
 routet;
 
+// structures
+typedef struct			// route
+{
+	struct in6_addr ipv6route;	// Static IPv6 route
+	uint8_t ipv6prefixlen;		// IPv6 route prefix length
+}
+routet6;
+
 typedef struct controls		// control message
 {
 	struct controls *next;	// next in queue
@@ -329,14 +338,13 @@ typedef struct
 	uint8_t walled_garden;		// is this session gardened?
 	uint8_t classlen;		// class (needed for radius accounting messages)
 	char class[MAXCLASS];
-	uint8_t ipv6prefixlen;		// IPv6 route prefix length
-	struct in6_addr ipv6route;	// Static IPv6 route
 	sessionidt forwardtosession;	// LNS id_session to forward
 	uint8_t src_hwaddr[ETH_ALEN];	// MAC addr source (for pppoe sessions 6 bytes)
 	uint32_t dhcpv6_prefix_iaid;	// prefix iaid requested by client
 	uint32_t dhcpv6_iana_iaid;		// iaid of iana requested by client
 	struct in6_addr ipv6address;	// Framed Ipv6 address
 	struct dhcp6_opt_clientid dhcpv6_client_id; // Size max (headers + DUID)
+	routet6 route6[MAXROUTE6];		// static IPv6 routes
 	char reserved[4];		// Space to expand structure without changing HB_VERSION
 }
 sessiont;

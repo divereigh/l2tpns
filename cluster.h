@@ -26,7 +26,7 @@
 #define C_MPPP_FORWARD	19	// MPPP Forwarded packet..
 #define C_PPPOE_FORWARD	20	// PPPOE Forwarded packet..
 
-#define HB_VERSION		8	// Protocol version number..
+#define HB_VERSION		9	// Protocol version number..
 #define HB_MAX_SEQ		(1<<30)	// Maximum sequence number. (MUST BE A POWER OF 2!)
 #define HB_HISTORY_SIZE		64	// How many old heartbeats we remember?? (Must be a factor of HB_MAX_SEQ)
 

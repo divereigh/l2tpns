@@ -2128,8 +2128,11 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 			free_ip_address(s);
 
 		// unroute IPv6, if setup
-		if (session[s].ipv6route.s6_addr[0] && session[s].ipv6prefixlen && del_routes)
-			route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 0);
+		for (r = 0; r < MAXROUTE6 && session[s].route6[r].ipv6route.s6_addr[0] && session[s].route6[r].ipv6prefixlen; r++)
+		{
+			if (del_routes) route6set(s, session[s].route6[r].ipv6route, session[s].route6[r].ipv6prefixlen, 0);
+			memset(&session[s].route6[r], 0, sizeof(session[s].route6[r]));
+		}
 
 		if (session[s].ipv6address.s6_addr[0] && del_routes)
 		{
@@ -2189,8 +2192,10 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 						cache_ipmap(session[new_s].ip, new_s);
 
 						// IPV6 route
-						if (session[new_s].ipv6prefixlen)
-							cache_ipv6map(session[new_s].ipv6route, session[new_s].ipv6prefixlen, new_s);
+						for (r = 0; r < MAXROUTE6 && session[new_s].route6[r].ipv6prefixlen; r++)
+						{
+							cache_ipv6map(session[new_s].route6[r].ipv6route, session[new_s].route6[r].ipv6prefixlen, new_s);
+						}
 
 						if (session[new_s].ipv6address.s6_addr[0])
 						{
@@ -5830,7 +5835,7 @@ int load_session(sessionidt s, sessiont *new)
 	// needs update
 	if (newip)
 	{
-	    	int routed = 0;
+		int routed = 0;
 
 		// remove old routes...
 		for (i = 0; i < MAXROUTE && session[s].route[i].ip; i++)
@@ -5854,8 +5859,10 @@ int load_session(sessionidt s, sessiont *new)
 		}
 
 		// remove old IPV6 routes...
-		if (session[s].ipv6route.s6_addr[0] && session[s].ipv6prefixlen)
-			route6set(s, session[s].ipv6route, session[s].ipv6prefixlen, 0);
+		for (i = 0; i < MAXROUTE6 && session[s].route6[i].ipv6route.s6_addr[0] && session[s].route6[i].ipv6prefixlen; i++)
+		{
+			route6set(s, session[s].route6[i].ipv6route, session[s].route6[i].ipv6prefixlen, 0);
+		}
 
 		if (session[s].ipv6address.s6_addr[0])
 		{
@@ -5888,8 +5895,10 @@ int load_session(sessionidt s, sessiont *new)
 	}
 
 	// check v6 routing
-	if (new->ipv6prefixlen && new->ppp.ipv6cp == Opened && session[s].ppp.ipv6cp != Opened)
-		route6set(s, new->ipv6route, new->ipv6prefixlen, 1);
+	for (i = 0; i < MAXROUTE6 && new->route6[i].ipv6prefixlen; i++)
+	{
+		route6set(s, new->route6[i].ipv6route, new->route6[i].ipv6prefixlen, 1);
+	}
 
 	if (new->ipv6address.s6_addr[0] && new->ppp.ipv6cp == Opened && session[s].ppp.ipv6cp != Opened)
 	{

@@ -606,6 +606,7 @@ struct Tstats
     uint32_t	call_processudp;
     uint32_t	call_sessionbyip;
     uint32_t	call_sessionbyipv6;
+    uint32_t	call_sessionbyipv6new;
     uint32_t	call_sessionbyuser;
     uint32_t	call_sendarp;
     uint32_t	call_sendipcp;
@@ -951,6 +952,7 @@ void send_ipv6_ra(sessionidt s, tunnelidt t, struct in6_addr *ip);
 void route6set(sessionidt s, struct in6_addr ip, int prefixlen, int add);
 sessionidt sessionbyip(in_addr_t ip);
 sessionidt sessionbyipv6(struct in6_addr ip);
+sessionidt sessionbyipv6new(struct in6_addr ip);
 sessionidt sessionbyuser(char *username);
 void increment_counter(uint32_t *counter, uint32_t *wrap, uint32_t delta);
 void random_data(uint8_t *buf, int len);

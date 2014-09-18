@@ -102,7 +102,7 @@ union iphash {
 struct ipv6radix {
 	sessionidt sess;
 	struct ipv6radix *branch;
-} ipv6_hash[256];		// Mapping from IPv6 address to session structures.
+} ipv6_hash[16];		// Mapping from IPv6 address to session structures.
 
 // Traffic counters.
 static uint32_t udp_rx = 0, udp_rx_pkt = 0, udp_tx = 0;
@@ -983,19 +983,24 @@ static sessionidt lookup_ipv6map(struct in6_addr ip)
 	char ipv6addr[INET6_ADDRSTRLEN];
 
 	curnode = &ipv6_hash[ip.s6_addr[0]];
+	curnode = &ipv6_hash[((ip.s6_addr[0]) & 0xF0)>>4];
 	i = 1;
 	s = curnode->sess;
 
-	while (s == 0 && i < 15 && curnode->branch != NULL)
+	while (s == 0 && i < 32 && curnode->branch != NULL)
 	{
-		curnode = &curnode->branch[ip.s6_addr[i]];
+		if (i & 1)
+			curnode = &curnode->branch[ip.s6_addr[i>>1] & 0x0F];
+		else
+			curnode = &curnode->branch[(ip.s6_addr[i>>1] & 0xF0)>>4];
+
 		s = curnode->sess;
 		i++;
 	}
 
 	LOG(4, s, session[s].tunnel, "Looking up address %s and got %d\n",
-    			inet_ntop(AF_INET6, &ip, ipv6addr,
-				INET6_ADDRSTRLEN),
+			inet_ntop(AF_INET6, &ip, ipv6addr,
+			INET6_ADDRSTRLEN),
 			s);
 
 	return s;
@@ -1029,6 +1034,19 @@ sessionidt sessionbyipv6(struct in6_addr ip)
 	} else {
 		s = lookup_ipv6map(ip);
 	}
+
+	if (s > 0 && s < MAXSESSION && session[s].opened)
+		return s;
+
+	return 0;
+}
+
+sessionidt sessionbyipv6new(struct in6_addr ip)
+{
+	sessionidt s;
+	CSTAT(sessionbyipv6new);
+
+	s = lookup_ipv6map(ip);
 
 	if (s > 0 && s < MAXSESSION && session[s].opened)
 		return s;
@@ -1075,22 +1093,28 @@ static void uncache_ipmap(in_addr_t ip)
 static void cache_ipv6map(struct in6_addr ip, int prefixlen, sessionidt s)
 {
 	int i;
-	int bytes;
+	int niblles;
 	struct ipv6radix *curnode;
 	char ipv6addr[INET6_ADDRSTRLEN];
 
-	curnode = &ipv6_hash[ip.s6_addr[0]];
+	curnode = &ipv6_hash[((ip.s6_addr[0]) & 0xF0)>>4];
 
-	bytes = prefixlen >> 3;
+	niblles = prefixlen >> 2;
 	i = 1;
-	while (i < bytes) {
+
+	while (i < niblles)
+	{
 		if (curnode->branch == NULL)
 		{
-			if (!(curnode->branch = calloc(256,
-					sizeof (struct ipv6radix))))
+			if (!(curnode->branch = calloc(16, sizeof (struct ipv6radix))))
 				return;
 		}
-		curnode = &curnode->branch[ip.s6_addr[i]];
+
+		if (i & 1)
+			curnode = &curnode->branch[ip.s6_addr[i>>1] & 0x0F];
+		else
+			curnode = &curnode->branch[(ip.s6_addr[i>>1] & 0xF0)>>4];
+
 		i++;
 	}
 
@@ -1098,13 +1122,13 @@ static void cache_ipv6map(struct in6_addr ip, int prefixlen, sessionidt s)
 
 	if (s > 0)
 		LOG(4, s, session[s].tunnel, "Caching ip address %s/%d\n",
-	    			inet_ntop(AF_INET6, &ip, ipv6addr, 
-					INET6_ADDRSTRLEN),
+				inet_ntop(AF_INET6, &ip, ipv6addr,
+				INET6_ADDRSTRLEN),
 				prefixlen);
 	else if (s == 0)
 		LOG(4, 0, 0, "Un-caching ip address %s/%d\n",
-	    			inet_ntop(AF_INET6, &ip, ipv6addr, 
-					INET6_ADDRSTRLEN),
+				inet_ntop(AF_INET6, &ip, ipv6addr,
+				INET6_ADDRSTRLEN),
 				prefixlen);
 }
 
@@ -1154,7 +1178,6 @@ int cmd_show_ipcache(struct cli_def *cli, const char *command, char **argv, int 
 	cli_print(cli, "%d entries in cache", count);
 	return CLI_OK;
 }
-
 
 // Find session by username, 0 for not found
 // walled garden users aren't authenticated, so the username is
@@ -1692,7 +1715,6 @@ static void processipv6out(uint8_t * buf, int len)
 	sessionidt s;
 	sessiont *sp;
 	tunnelidt t;
-	in_addr_t ip;
 	struct in6_addr ip6;
 
 	uint8_t *data = buf;	// Keep a copy of the originals.
@@ -1731,10 +1753,9 @@ static void processipv6out(uint8_t * buf, int len)
 
 	if (s == 0)
 	{
-		ip = *(uint32_t *)(buf + 32);
-		s = sessionbyip(ip);
+		s = sessionbyipv6new(ip6);
 	}
-	
+
 	if (s == 0)
 	{
 		// Is this a packet for a session that doesn't exist?

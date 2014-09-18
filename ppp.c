@@ -1580,8 +1580,16 @@ void processipv6cp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 				gotip++; // seen address
 				if (o[1] != 10) return;
 
-				ident[0] = htonl(session[s].ip);
-				ident[1] = 0;
+				if (session[s].ipv6address.s6_addr[0])
+				{
+					// LSB 64bits of assigned IPv6 address to user (see radius attribut Framed-IPv6-Address)
+					memcpy(&ident[0], &session[s].ipv6address.s6_addr[8], 8);
+				}
+				else
+				{
+					ident[0] = htonl(session[s].ip);
+					ident[1] = 0;
+				}
 
 				if (memcmp(o + 2, ident, sizeof(ident)))
 				{
@@ -2254,7 +2262,18 @@ void processipv6in(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		return;
 
 	// no spoof
-	if ((ipv4 != session[s].ip || memcmp(&config->ipv6_prefix, &ip, 8)) && sessionbyipv6(ip) != s)
+	if (session[s].ipv6address.s6_addr[0])
+	{
+		if ((sessionbyipv6new(ip) != s) &&
+			(ip.s6_addr[0] != 0xFE || ip.s6_addr[1] != 0x80 || ip.s6_addr16[1] != 0 || ip.s6_addr16[2] != 0 || ip.s6_addr16[3] != 0))
+		{
+			char str[INET6_ADDRSTRLEN];
+			LOG(5, s, t, "Dropping packet with spoofed IP %s\n",
+					inet_ntop(AF_INET6, &ip, str, INET6_ADDRSTRLEN));
+			return;
+		}
+	}
+	else if ((ipv4 != session[s].ip || memcmp(&config->ipv6_prefix, &ip, 8)) && sessionbyipv6(ip) != s)
 	{
 		char str[INET6_ADDRSTRLEN];
 		LOG(5, s, t, "Dropping packet with spoofed IP %s\n",

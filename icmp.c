@@ -143,7 +143,13 @@ void send_ipv6_ra(sessionidt s, tunnelidt t, struct in6_addr *ip)
 	pinfo->nd_opt_pi_preferred_time = htonl(604800);
 	pinfo->nd_opt_pi_reserved2      = 0;
 	pinfo->nd_opt_pi_prefix_len     = 64; // prefix length
-	pinfo->nd_opt_pi_prefix         = config->ipv6_prefix;
+	if (session[s].ipv6address.s6_addr[0])
+	{
+		// MSB 64bits of assigned IPv6 address to user (see radius attribut Framed-IPv6-Address)
+		memcpy(&pinfo->nd_opt_pi_prefix, &session[s].ipv6address.s6_addr[0], 8);
+	}
+	else
+		pinfo->nd_opt_pi_prefix     = config->ipv6_prefix;
 
 	// // Length of payload (not header)
 	p_ip6_hdr->ip6_plen = htons(sizeof(*pinfo) + sizeof(*p_nra));

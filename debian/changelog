@@ -1,3 +1,11 @@
+l2tpns (2.2.1-2fdn3.15) unstable; urgency=low
+
+  * new feature: If the user attribute "Framed-IPv6-Address" is defined then the ICMPv6_RA advertise this IPv6 address.
+  * Fix: Incorrect delegation of IPv6 prefixes when multiple of 4 bits (nibble) (eg: /44, /52 ...).
+  * Added ability to define up to 5 IPv6 prefix delegation by user.
+
+ -- Fernando Alves <fendo@sameswifi.fr>  Thu, 18 Sep 2014 18:36:43 +0200
+
 l2tpns (2.2.1-2fdn3.14) unstable; urgency=low
 
   * Fix cluster slave; reset to 0, the end of the session when the master version < slave version.

@@ -982,7 +982,6 @@ static sessionidt lookup_ipv6map(struct in6_addr ip)
 	int s;
 	char ipv6addr[INET6_ADDRSTRLEN];
 
-	curnode = &ipv6_hash[ip.s6_addr[0]];
 	curnode = &ipv6_hash[((ip.s6_addr[0]) & 0xF0)>>4];
 	i = 1;
 	s = curnode->sess;
@@ -5916,9 +5915,12 @@ int load_session(sessionidt s, sessiont *new)
 	}
 
 	// check v6 routing
-	for (i = 0; i < MAXROUTE6 && new->route6[i].ipv6prefixlen; i++)
+	if (new->ppp.ipv6cp == Opened && session[s].ppp.ipv6cp != Opened)
 	{
-		route6set(s, new->route6[i].ipv6route, new->route6[i].ipv6prefixlen, 1);
+		for (i = 0; i < MAXROUTE6 && new->route6[i].ipv6prefixlen; i++)
+		{
+			route6set(s, new->route6[i].ipv6route, new->route6[i].ipv6prefixlen, 1);
+		}
 	}
 
 	if (new->ipv6address.s6_addr[0] && new->ppp.ipv6cp == Opened && session[s].ppp.ipv6cp != Opened)

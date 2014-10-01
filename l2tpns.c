@@ -194,6 +194,7 @@ config_descriptt config_values[] = {
 	CONFIG("dhcp6_preferred_lifetime", dhcp6_preferred_lifetime, INT),
 	CONFIG("dhcp6_valid_lifetime", dhcp6_valid_lifetime, INT),
 	CONFIG("dhcp6_server_duid", dhcp6_server_duid, INT),
+	CONFIG("dns6_lifetime", dns6_lifetime, INT),
 	CONFIG("primary_ipv6_dns", default_ipv6_dns1, IPv6),
 	CONFIG("secondary_ipv6_dns", default_ipv6_dns2, IPv6),
 	CONFIG("default_ipv6_domain_list", default_ipv6_domain_list, STRING),
@@ -4599,6 +4600,8 @@ static void initdata(int optdebug, char *optconfig)
 	// Set default value echo_timeout and idle_echo_timeout
 	config->echo_timeout = ECHO_TIMEOUT;
 	config->idle_echo_timeout = IDLE_ECHO_TIMEOUT;
+	// Set default RDNSS lifetime
+	config->dns6_lifetime = 1200;
 
 	log_stream = stderr;
 

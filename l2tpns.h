@@ -808,6 +808,7 @@ typedef struct
 	uint32_t dhcp6_preferred_lifetime;		// preferred lifetime (see rfc3315)
 	uint32_t dhcp6_valid_lifetime;		// valid lifetime (see rfc3315)
 	uint32_t dhcp6_server_duid;		// DUID of dhcpv6 server (see rfc3315)
+	uint32_t dns6_lifetime;		// RDNSS lifetime default 1200 (see rfc6106, rfc4861) (MaxRtrAdvInterval <= Lifetime <= 2*MaxRtrAdvInterval)
 	char default_ipv6_domain_list[255];
 } configt;
 

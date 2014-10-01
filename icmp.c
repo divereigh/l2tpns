@@ -87,11 +87,21 @@ static uint16_t _checksum(uint8_t *addr, int count)
 	return htons((uint16_t) sum);
 }
 
+struct nd_opt_rdnss_info_l2tpns
+{
+	uint8_t  nd_opt_rdnssi_type;
+	uint8_t  nd_opt_rdnssi_len;
+	uint16_t nd_opt_rdnssi_pref_flag_reserved;
+	uint32_t nd_opt_rdnssi_lifetime;
+	struct in6_addr nd_opt_rdnssi[0];
+};
+
 void send_ipv6_ra(sessionidt s, tunnelidt t, struct in6_addr *ip)
 {
 	struct nd_opt_prefix_info *pinfo;
 	struct ip6_hdr *p_ip6_hdr;
 	struct nd_router_advert *p_nra;
+	struct nd_opt_rdnss_info_l2tpns *p_rdnss;
 	uint8_t b[MAXETHER + 20];
 	struct ipv6_pseudo_hdr pseudo_hdr;
 	int l;
@@ -151,19 +161,44 @@ void send_ipv6_ra(sessionidt s, tunnelidt t, struct in6_addr *ip)
 	else
 		pinfo->nd_opt_pi_prefix     = config->ipv6_prefix;
 
-	// // Length of payload (not header)
-	p_ip6_hdr->ip6_plen = htons(sizeof(*pinfo) + sizeof(*p_nra));
+	// Length of payload (not header)
+	l = sizeof(*pinfo) + sizeof(*p_nra);
 
-	l = sizeof(*pinfo) + sizeof(*p_nra) + sizeof(*p_ip6_hdr);
+	if (config->default_ipv6_dns1.s6_addr32[0])
+	{
+		struct in6_addr *ptr_in6_addr;
+		p_rdnss = (struct nd_opt_rdnss_info_l2tpns *) &pinfo[1];
+
+		p_rdnss->nd_opt_rdnssi_type = 25; //RDNSS OPTION INFORMATION;
+		p_rdnss->nd_opt_rdnssi_len = 3; // 1 + 2 * nb DNS
+		p_rdnss->nd_opt_rdnssi_lifetime = htonl(config->dns6_lifetime);
+		ptr_in6_addr = &p_rdnss->nd_opt_rdnssi[0];
+		memcpy(ptr_in6_addr, &config->default_ipv6_dns1, sizeof(*ptr_in6_addr));
+
+		l += sizeof(*p_rdnss)  + sizeof(*ptr_in6_addr);
+		if (config->default_ipv6_dns2.s6_addr32[0])
+		{
+			ptr_in6_addr = &p_rdnss->nd_opt_rdnssi[1];
+			memcpy(ptr_in6_addr, &config->default_ipv6_dns2, sizeof(*ptr_in6_addr));
+			p_rdnss->nd_opt_rdnssi_len += 2; // 1 + 2 * nb DNS
+			l += sizeof(*ptr_in6_addr);
+		}
+	}
+
+	// Length of payload (not header)
+	p_ip6_hdr->ip6_plen = htons(l);
 
 	/* Use pseudo hearder for checksum calculation */
 	memset(&pseudo_hdr, 0, sizeof(pseudo_hdr));
 	memcpy(&pseudo_hdr.src, &p_ip6_hdr->ip6_src, 16);
 	memcpy(&pseudo_hdr.dest, &p_ip6_hdr->ip6_dst, 16);
-	pseudo_hdr.ulp_length = htonl(sizeof(*pinfo) + sizeof(*p_nra)); // Lenght whitout Ipv6 header
+	pseudo_hdr.ulp_length = htonl(l); // Lenght whitout Ipv6 header
 	pseudo_hdr.nexthdr = IPPROTO_ICMPV6;
 	// Checksum is over the icmp6 payload plus the pseudo header
-	p_nra->nd_ra_cksum = ipv6_checksum(&pseudo_hdr, (uint8_t *) p_nra, (sizeof(*pinfo) + sizeof(*p_nra)));
+	p_nra->nd_ra_cksum = ipv6_checksum(&pseudo_hdr, (uint8_t *) p_nra, l);
+
+	// Length + hearder length
+	l += sizeof(*p_ip6_hdr);
 
 	tunnelsend(b, l + (((uint8_t *) p_ip6_hdr)-b), t); // send it...
 	return;

@@ -1,3 +1,9 @@
+l2tpns (2.2.1-2fdn3.17) unstable; urgency=low
+
+  * Add of the RDNSS option to ICMPv6 Router Advertisement (RA).
+
+ -- Fernando Alves <fendo@sameswifi.fr>  Thu, 02 Oct 2014 00:24:31 +0200
+
 l2tpns (2.2.1-2fdn3.16) unstable; urgency=low
 
   * Fix: IPv6 prefix routing on slave cluster

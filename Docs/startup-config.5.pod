@@ -184,6 +184,10 @@ Address to send to clients as the default gateway.
 
 If set, the process id will be written to the specified file. The value must be an absolute path.
 
+=item B<ppp_keepalive> (boolean)
+
+Change this value to no to force generation of LCP ECHO every echo_timeout seconds, even there are activity on the link (default: yes)
+
 =item B<ppp_restart_time> (int)
 
 =item B<ppp_max_configure> (int)

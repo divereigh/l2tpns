@@ -116,6 +116,8 @@ set accounting_dir "/var/run/l2tpns/acct"
 #set echo_timeout 10
 # Drop sessions who have not responded within idle_echo_timeout seconds (default 240 seconds)
 #set idle_echo_timeout 240
+# Change this value to no to force generation of LCP ECHO every echo_timeout seconds, even there are activity on the link (default yes)
+set ppp_keepalive yes
 
 # Drop/kill sessions
 #load plugin "sessionctl"

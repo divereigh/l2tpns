@@ -378,6 +378,12 @@ Drop sessions who have not responded within idle_echo_timeout seconds
 (default: 240 (seconds))
 </LI>
 
+<LI><B>ppp_keepalive</B> (int)<BR>
+Change this value to no to force generation of LCP ECHO every
+echo_timeout seconds, even there are activity on the link.
+(default: yes)
+</LI>
+
 <LI><B>auth_tunnel_change_addr_src</B> (boolean)<BR>
 This parameter authorize to change the source IP of the tunnels l2tp.
 This parameter can be used when the remotes BAS/LAC are l2tpns server

@@ -132,6 +132,7 @@ config_descriptt config_values[] = {
 	CONFIG("ppp_restart_time", ppp_restart_time, INT),
 	CONFIG("ppp_max_configure", ppp_max_configure, INT),
 	CONFIG("ppp_max_failure", ppp_max_failure, INT),
+	CONFIG("ppp_keepalive", ppp_keepalive, BOOL),
 	CONFIG("primary_dns", default_dns1, IPv4),
 	CONFIG("secondary_dns", default_dns2, IPv4),
 	CONFIG("primary_radius", radiusserver[0], IPv4),
@@ -3780,8 +3781,10 @@ static void regular_cleanups(double period)
 		}
 
 		// No data in ECHO_TIMEOUT seconds, send LCP ECHO
-		if (session[s].ppp.phase >= Establish && (time_now - session[s].last_packet >= config->echo_timeout) &&
-			(time_now - sess_local[s].last_echo >= ECHO_TIMEOUT))
+		if (session[s].ppp.phase >= Establish &&
+                    ((!config->ppp_keepalive) ||
+                     (time_now - session[s].last_packet >= config->echo_timeout)) &&
+		    (time_now - sess_local[s].last_echo >= ECHO_TIMEOUT))
 		{
 			uint8_t b[MAXETHER];
 
@@ -4600,6 +4603,7 @@ static void initdata(int optdebug, char *optconfig)
 	// Set default value echo_timeout and idle_echo_timeout
 	config->echo_timeout = ECHO_TIMEOUT;
 	config->idle_echo_timeout = IDLE_ECHO_TIMEOUT;
+	config->ppp_keepalive = 1;
 	// Set default RDNSS lifetime
 	config->dns6_lifetime = 1200;
 

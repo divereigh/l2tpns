@@ -687,6 +687,7 @@ typedef struct
 	int		ppp_restart_time;		// timeout for PPP restart
 	int		ppp_max_configure;		// max lcp configure requests to send
 	int		ppp_max_failure;		// max lcp configure naks to send
+	int		ppp_keepalive;			// send echoes regardless
 
 	char		radiussecret[64];
 	int		radius_accounting;

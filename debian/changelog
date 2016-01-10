@@ -1,4 +1,4 @@
-l2tpns (2.2.1.2fdn3.18) unstable; urgency=low
+l2tpns (2.2.1-2fdn3.18) unstable; urgency=low
 
   * Add of the ppp_keepalive option.
 

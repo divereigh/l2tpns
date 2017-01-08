@@ -1893,7 +1893,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		p += 4;
 		l -= 4;
 		// After this point the pointer should be advanced 4 bytes
-		LOG(4, s, t, "MPPP: 24 bits sequence number:%d\n",seq_num);
+		LOG(3, s, t, "MPPP: 24 bits sequence number:%d\n",seq_num);
 	}
 
 	max_seq = this_bundle->max_seq;
@@ -2000,7 +2000,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	this_frag->jitteravg = sess_local[s].jitteravg;
 	memcpy(this_frag->data, p, l);
 
-	LOG(4, s, t, "MPPP: seq_num:%d frag_index:%d INSERTED flags: %02X\n",  seq_num, frag_index, flags);
+	LOG(3, s, t, "MPPP: seq_num:%d frag_index:%d INSERTED flags: %02X\n",  seq_num, frag_index, flags);
 
 	//next frag index
 	frag_index_next = (frag_index + 1) & MAXFRAGNUM_MASK;
@@ -2169,7 +2169,7 @@ assembling_frame:
 	//assemble frame, process it, reset fragmentation
 	uint16_t cur_len = 4;   // This is set to 4 to leave 4 bytes for function processipin
 
-	LOG(4, s, t, "MPPP: processing fragments from %d to %d\n", begin_index, end_index);
+	LOG(3, s, t, "MPPP: processing fragments from %d to %d\n", begin_index, end_index);
 	// Push to the receive buffer
 
 	for (i = begin_index;; i = (i + 1) & MAXFRAGNUM_MASK)
@@ -2182,7 +2182,7 @@ assembling_frame:
 		}
 
 		memcpy(this_fragmentation->reassembled_frame+cur_len, this_frag->data, this_frag->length);
-		LOG(5, s, t, "MPPP: processing frame at %d, with len %d\n", i, this_frag->length);
+		LOG(3, s, t, "MPPP: processing frame at %d, with len %d\n", i, this_frag->length);
 
 		cur_len += this_frag->length;
 		if (i == end_index)
@@ -2191,7 +2191,7 @@ assembling_frame:
 			this_fragmentation->re_frame_begin_index = begin_index;
 			this_fragmentation->re_frame_end_index = end_index;
 			// Process the resassembled frame
-			LOG(5, s, t, "MPPP: Process the reassembled frame, len=%d\n",cur_len);
+			LOG(3, s, t, "MPPP: Process the reassembled frame, len=%d\n",cur_len);
 			processmpframe(s, t, this_fragmentation->reassembled_frame, this_fragmentation->re_frame_len, 1);
 			break;
 		}
@@ -2210,7 +2210,7 @@ assembling_frame:
 	// Set the new start_index and start_seq
 	this_fragmentation->start_index = (end_index + 1) & MAXFRAGNUM_MASK;
 	this_fragmentation->start_seq = this_fragmentation->fragment[end_index].seq + 1;
-	LOG(4, s, t, "MPPP after assembling: start index is = %d, start seq=%d\n", this_fragmentation->start_index, this_fragmentation->start_seq);
+	LOG(3, s, t, "MPPP after assembling: start index is = %d, start seq=%d\n", this_fragmentation->start_index, this_fragmentation->start_seq);
 
 	begin_index = this_fragmentation->start_index;
 	if ((this_fragmentation->fragment[begin_index].length) &&

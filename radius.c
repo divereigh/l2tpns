@@ -206,8 +206,8 @@ void radiussend(uint16_t r, uint8_t state)
 			{
 				LOG(1, s, session[s].tunnel, "RADIUS timeout, but in state %s so don't timeout session\n",
 					radius_state(state));
-				radiusclear(r, s);
 			}
+			radiusclear(r, s);
 			STAT(radius_timeout);
 		}
 		else

@@ -1981,7 +1981,7 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		** Find the one with the lowest last_seq and terminate it.
 		*/
 		uint32_t min;
-		int member;
+		int lm;
 		min = sess_local[(this_bundle->members[0])].last_seq;
 		lm=0;
 		for (i = 1; i < this_bundle->num_of_links; i++)

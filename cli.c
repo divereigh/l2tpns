@@ -48,6 +48,7 @@ extern struct Tringbuffer *ringbuffer;
 #endif
 extern struct cli_session_actions *cli_session_actions;
 extern struct cli_tunnel_actions *cli_tunnel_actions;
+extern struct cli_bundle_actions *cli_bundle_actions;
 extern tbft *filter_list;
 extern ip_filtert *ip_filters;
 
@@ -77,6 +78,7 @@ static char *debug_levels[] = {
 
 static int cmd_show_session(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_show_tunnels(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_show_bundle(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_show_users(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_show_radius(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_show_version(struct cli_def *cli, const char *command, char **argv, int argc);
@@ -89,6 +91,7 @@ static int cmd_write_memory(struct cli_def *cli, const char *command, char **arg
 static int cmd_drop_user(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_drop_tunnel(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_drop_session(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_drop_bundle(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_snoop(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_no_snoop(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_throttle(struct cli_def *cli, const char *command, char **argv, int argc);
@@ -147,6 +150,7 @@ void init_cli()
 #ifdef BGP
 	cli_register_command(cli, c, "bgp", cmd_show_bgp, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show BGP status");
 #endif /* BGP */
+	cli_register_command(cli, c, "bundle", cmd_show_bundle, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show a list of mppp bundles of sessions or details for a single bundle");
 	cli_register_command(cli, c, "cluster", cmd_show_cluster, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show cluster information");
 	cli_register_command(cli, c, "ipcache", cmd_show_ipcache, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "Show contents of the IP cache");
 	cli_register_command(cli, c, "plugins", cmd_show_plugins, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "List all installed plugins");
@@ -217,6 +221,7 @@ void init_cli()
 	cli_register_command(cli, c, "user", cmd_drop_user, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Disconnect a user");
 	cli_register_command(cli, c, "tunnel", cmd_drop_tunnel, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Disconnect a tunnel and all sessions on that tunnel");
 	cli_register_command(cli, c, "session", cmd_drop_session, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Disconnect a session");
+	cli_register_command(cli, c, "bundle", cmd_drop_bundle, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Disconnect a bundle and all sessions in that bundle");
 
 	c = cli_register_command(cli, NULL, "load", NULL, PRIVILEGE_PRIVILEGED, MODE_CONFIG, NULL);
 	cli_register_command(cli, c, "plugin", cmd_load_plugin, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Load a plugin");
@@ -431,6 +436,9 @@ static int cmd_show_session(struct cli_def *cli, const char *command, char **arg
 			cli_print(cli, "\tCalling Num:\t%s", session[s].calling);
 			cli_print(cli, "\tCalled Num:\t%s", session[s].called);
 			cli_print(cli, "\tTunnel ID:\t%d", session[s].tunnel);
+			if (session[s].bundle) {
+				cli_print(cli, "\tBundle ID:\t%d", session[s].bundle);
+			}
 			cli_print(cli, "\tPPP Phase:\t%s", ppp_phase(session[s].ppp.phase));
 			switch (session[s].ppp.phase)
 			{
@@ -535,9 +543,10 @@ static int cmd_show_session(struct cli_def *cli, const char *command, char **arg
 	}
 
 	// Show Summary
-	cli_print(cli, "%5s %7s %4s %-32s %-15s %s %s %s %s %10s %10s %10s %4s %10s %-18s %s",
+	cli_print(cli, "%5s %7s %4s %4s %-32s %-15s %s %s %s %s %10s %10s %10s %4s %10s %-18s %s",
 			"SID",
 			"LkToSID",
+			"BID",
 			"TID",
 			"Username",
 			"IP",
@@ -561,9 +570,10 @@ static int cmd_show_session(struct cli_def *cli, const char *command, char **arg
 			rem_time = session[i].timeout ? (session[i].timeout - bundle[session[i].bundle].online_time) : 0;
 		else
 			rem_time = session[i].timeout ? (session[i].timeout - (time_now-session[i].opened)) : 0;
-		cli_print(cli, "%5d %7d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %3s%-20s %s",
+		cli_print(cli, "%5d %7d %4d %4d %-32s %-15s %s %s %s %s %10u %10lu %10lu %4u %10lu %3s%-20s %s",
 				i,
 				session[i].forwardtosession,
+				session[i].bundle,
 				session[i].tunnel,
 				session[i].user[0] ? session[i].user : "*",
 				fmtaddr(htonl(session[i].ip), 0),
@@ -579,6 +589,107 @@ static int cmd_show_session(struct cli_def *cli, const char *command, char **arg
 				(session[i].tunnel == TUNNEL_ID_PPPOE)?"(P)":(tunnel[session[i].tunnel].isremotelns?"(R)":"(L)"),
 				(session[i].tunnel == TUNNEL_ID_PPPOE)?fmtMacAddr(session[i].src_hwaddr):fmtaddr(htonl(tunnel[session[i].tunnel].ip), 1),
 				session[i].calling[0] ? session[i].calling : "*");
+	}
+	return CLI_OK;
+}
+
+static int cmd_show_bundle(struct cli_def *cli, const char *command, char **argv, int argc)
+{
+	int i;
+
+	if (CLI_HELP_REQUESTED)
+		return cli_arg_help(cli, 1,
+			"<1-%d>", MAXBUNDLE-1, "Show specific bundle by id",
+			NULL);
+
+	time(&time_now);
+	if (argc > 0)
+	{
+		// Show individual bundle
+		for (i = 0; i < argc; i++)
+		{
+			unsigned int b, b_in=0, b_out=0, p_in=0, p_out=0;
+			b = atoi(argv[i]);
+			if (b <= 0 || b >= MAXBUNDLE)
+			{
+				cli_print(cli, "Invalid bundle id \"%s\"", argv[i]);
+				continue;
+			}
+			cli_print(cli, "\r\nBundle %d:", b);
+			cli_print(cli, "\tUser:\t\t%s", bundle[b].user[0] ? bundle[b].user : "none");
+			cli_print(cli, "\tLink count:\t%d", bundle[b].num_of_links);
+			cli_print(cli, "\tIP address:\t%s", fmtaddr(htonl(session[bundle[b].members[0]].ip), 0));
+			cli_print(cli, "\tOn line:\t\t%u seconds", bundle[b].online_time);
+			cli_print(cli, "\tLast Check:\t\t%u seconds ago", abs(bundle[b].last_check - time_now));
+			cli_print(cli, "\tBundle Timeout:\t%u seconds", bundle[b].timeout - (bundle[b].online_time ? abs(time_now - bundle[b].online_time) : 0));
+
+			for (i = 0; i < bundle[b].num_of_links; i++)
+			{
+				int s=bundle[b].members[i];
+				b_in += session[s].cin;
+				b_out += session[s].cout;
+				p_in += session[s].pin;
+				p_out += session[s].pout;
+			}
+			cli_print(cli, "\tBytes In/Out:\t%u/%u", b_out, b_in);
+			cli_print(cli, "\tPkts In/Out:\t%u/%u", p_out, p_in);
+
+			cli_print(cli, "%5s %4s %-15s %s %s %s %s %10s %10s %10s %4s %10s %-18s %s",
+					"SID",
+					"TID",
+					"IP",
+					"I",
+					"T",
+					"G",
+					"6",
+					"opened",
+					"downloaded",
+					"uploaded",
+					"idle",
+					"Rem.Time",
+					"LAC(L)/RLNS(R)/PPPOE(P)",
+					"CLI");
+			for (i = 0; i < bundle[b].num_of_links; i++)
+			{
+				int s=bundle[b].members[i];
+				cli_print(cli, "%5d %4d %-15s %s %s %s %s %10u %10lu %10lu %4u %10u %3s%-20s %s",
+						s,
+						session[s].tunnel,
+						fmtaddr(htonl(session[s].ip), 0),
+						(session[s].snoop_ip && session[s].snoop_port) ? "Y" : "N",
+						(session[s].throttle_in || session[s].throttle_out) ? "Y" : "N",
+						(session[s].walled_garden) ? "Y" : "N",
+						(session[s].ppp.ipv6cp == Opened) ? "Y" : "N",
+						abs(time_now - (unsigned long)session[s].opened),
+						(unsigned long)session[s].cout,
+						(unsigned long)session[s].cin,
+						abs(time_now - (session[s].last_packet ? session[s].last_packet : time_now)),
+						(unsigned long)session[s].timeout ? (session[s].timeout - bundle[i].online_time) : 0,
+						(session[s].tunnel == TUNNEL_ID_PPPOE)?"(P)":(tunnel[session[s].tunnel].isremotelns?"(R)":"(L)"),
+						(session[s].tunnel == TUNNEL_ID_PPPOE)?fmtMacAddr(session[s].src_hwaddr):fmtaddr(htonl(tunnel[session[s].tunnel].ip), 1),
+						session[s].calling[0] ? session[s].calling : "*");
+			}
+		}
+		return CLI_OK;
+	}
+
+	// Show Summary
+	cli_print(cli, "%4s %-32s %-15s %s",
+			"BID",
+			"Username",
+			"IP",
+			"Count");
+
+	for (i = 1; i < MAXBUNDLE; i++)
+	{
+		if (bundle[i].state!=BUNDLEOPEN)
+			continue;
+
+		cli_print(cli, "%4d %-32s %-15s %d",
+				i,
+				bundle[i].user[0] ? bundle[i].user : "*",
+				fmtaddr(htonl(session[bundle[i].members[0]].ip), 0),
+				bundle[i].num_of_links);
 	}
 	return CLI_OK;
 }
@@ -1237,6 +1348,50 @@ static int cmd_drop_tunnel(struct cli_def *cli, const char *command, char **argv
 
 		cli_print(cli, "Tunnel %d shut down (%s)", t, tunnel[t].hostname);
 		cli_tunnel_actions[t].action |= CLI_TUN_KILL;
+	}
+
+	return CLI_OK;
+}
+
+static int cmd_drop_bundle(struct cli_def *cli, const char *command, char **argv, int argc)
+{
+	int i;
+	bundleidt b;
+
+	if (CLI_HELP_REQUESTED)
+		return cli_arg_help(cli, argc > 1,
+			"<1-%d>", MAXBUNDLE-1, "Bundle id to drop", NULL);
+
+	if (!config->cluster_iam_master)
+	{
+		cli_error(cli, "Can't do this on a slave.  Do it on %s",
+			fmtaddr(config->cluster_master_address, 0));
+
+		return CLI_OK;
+	}
+
+	if (!argc)
+	{
+		cli_error(cli, "Specify a bundle to drop");
+		return CLI_OK;
+	}
+
+	for (i = 0; i < argc; i++)
+	{
+		if ((b = atol(argv[i])) <= 0 || (b >= MAXBUNDLE))
+		{
+			cli_error(cli, "Invalid bundle ID (1-%d)", MAXBUNDLE-1);
+			continue;
+		}
+
+		if (bundle[b].state!=BUNDLEOPEN)
+		{
+			cli_error(cli, "Bundle %d is not open", b);
+			continue;
+		}
+
+		cli_print(cli, "Bundle %d shut down (%s)", b, bundle[b].user);
+		cli_bundle_actions[b].action |= CLI_BUNDLE_KILL;
 	}
 
 	return CLI_OK;

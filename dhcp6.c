@@ -459,6 +459,7 @@ void dhcpv6_process(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 			}
 
 			dhcp6_send_reply(s, t, &p_ip6_hdr_in->ip6_src);
+			send_ipv6_ra(s, t, &p_ip6_hdr_in->ip6_src); // send a RA
 		}
 		break;
 

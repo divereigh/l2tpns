@@ -2228,7 +2228,7 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 			}
 
 			cluster_send_bundle(b);
-        }
+        	}
 	}
 
 	if (session[s].throttle_in || session[s].throttle_out) // Unthrottle if throttled.
@@ -3839,6 +3839,14 @@ static void regular_cleanups(double period)
 		{
 			sessionshutdown(s, "Idle Timeout Reached", CDN_ADMIN_DISC, TERM_IDLE_TIMEOUT);
 			STAT(session_timeout);
+			s_actions++;
+			continue;
+		}
+
+		// Drop sessions that have the state of Closing
+		if (session[s].ppp.lcp == Closing)
+		{
+			sessionshutdown(s, "Kill closing session", CDN_ADMIN_DISC, TERM_USER_REQUEST);
 			s_actions++;
 			continue;
 		}

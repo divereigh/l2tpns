@@ -1976,8 +1976,25 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	// discard if frag_offset is bigger that the fragmentation buffer size
 	if (frag_offset >= MAXFRAGNUM)
 	{
-		// frag_offset is bigger that the fragmentation buffer size
+		/* frag_offset is bigger that the fragmentation buffer size
+		** more than likely one (or more) of the PPP links has died.
+		** Find the one with the lowest last_seq and terminate it.
+		*/
+		uint32_t min;
+		int member;
+		min = sess_local[(this_bundle->members[0])].last_seq;
+		lm=0;
+		for (i = 1; i < this_bundle->num_of_links; i++)
+		{
+			uint32_t s_seq = sess_local[(this_bundle->members[i])].last_seq;
+			if (s_seq < min) {
+				min = s_seq;
+				lm=i;
+			}
+		}
+
 		LOG(3, s, t, "MPPP: Index out of range, seq:%d, begin_seq:%d\n", seq_num, this_fragmentation->start_seq);
+		sessionshutdown(this_bundle->members[lm], "MPPP: Link appears to have stopped", CDN_ADMIN_DISC, TERM_LOST_SERVICE);
 		return;
 	}
 

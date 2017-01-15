@@ -1119,6 +1119,13 @@ int join_bundle(sessionidt s)
 	// Search for a bundle to join
 	bundleidt i;
 	bundleidt b;
+
+	if (!session[s].opened)
+	{
+		LOG(3, s, session[s].tunnel, "Called join_bundle on an unopened session.\n");
+		return -1;                   // not a live session
+	}
+
 	for (i = 1; i < MAXBUNDLE; i++)
 	{
 		if (bundle[i].state != BUNDLEFREE)
@@ -1130,6 +1137,7 @@ int join_bundle(sessionidt s)
 				{
 					// uniformity of sequence number format must be insured
 					LOG(3, s, session[s].tunnel, "MPPP: unable to bundle session %d in bundle %d cause of different mssf\n", s, i);
+					LOG(0, s, session[s].tunnel, "MPPP: Mismatching mssf option with other sessions in bundle\n");
 					return -1;
 				}
 				session[s].bundle = i;

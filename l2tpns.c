@@ -5782,8 +5782,8 @@ int sessionsetup(sessionidt s, tunnelidt t)
 			cluster_send_bundle(session[s].bundle);
 		else
 		{
-			LOG(0, s, t, "MPPP: Mismaching mssf option with other sessions in bundle\n");
-			sessionshutdown(s, "Mismaching mssf option.", CDN_NONE, TERM_SERVICE_UNAVAILABLE);
+			LOG(0, s, t, "MPPP: Unable to join bundle\n");
+			sessionshutdown(s, "Unable to join bundle", CDN_NONE, TERM_SERVICE_UNAVAILABLE);
 			return 0;
 		}
 	}

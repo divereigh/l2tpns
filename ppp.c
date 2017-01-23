@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <netinet/ip6.h>
-#include <time.h>
 #include "dhcp6.h"
 #include "l2tpns.h"
 #include "constants.h"

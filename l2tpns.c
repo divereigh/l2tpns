@@ -2164,71 +2164,78 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 
 		if (b)
 		{
-			// This session was part of a bundle
-			bundle[b].num_of_links--;
-			LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d (remaining links: %d)\n",s,b,bundle[b].num_of_links);
-			if(bundle[b].num_of_links == 0)
+			uint8_t mem_num = 0;
+			uint8_t ml;
+			// Find out which member number we are
+			for(ml = 0; ml<bundle[b].num_of_links; ml++)
 			{
-				bundleclear(b);
-				LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaining member links)\n",b);
-			}
-			else 
-			{
-				// Adjust the members array to accomodate the new change
-				uint8_t mem_num = 0;
-				// It should be here num_of_links instead of num_of_links-1 (previous instruction "num_of_links--")
-				if(bundle[b].members[bundle[b].num_of_links] != s)
+				if(bundle[b].members[ml] == s)
 				{
-					uint8_t ml;
-					for(ml = 0; ml<bundle[b].num_of_links; ml++)
-					if(bundle[b].members[ml] == s)
-					{
-							mem_num = ml;
-							break;
-					}
-					bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
-					LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
-
-					// If the killed session is the first of the bundle,
-					// the new first session must be stored in the cache_ipmap
-					// else the function sessionbyip return 0 and the sending not work any more (processipout).
-					if (mem_num == 0)
-					{
-						sessionidt new_s = bundle[b].members[0];
-
-						routed = 0;
-						// Add the route for this session.
-						for (r = 0; r < MAXROUTE && session[new_s].route[r].ip; r++)
-						{
-							int i, prefixlen;
-							in_addr_t ip;
-
-							prefixlen = session[new_s].route[r].prefixlen;
-							ip = session[new_s].route[r].ip;
-
-							if (!prefixlen) prefixlen = 32;
-							ip &= 0xffffffff << (32 - prefixlen);	// Force the ip to be the first one in the route.
-
-							for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
-								cache_ipmap(i, new_s);
-						}
-						cache_ipmap(session[new_s].ip, new_s);
-
-						// IPV6 route
-						for (r = 0; r < MAXROUTE6 && session[new_s].route6[r].ipv6prefixlen; r++)
-						{
-							cache_ipv6map(session[new_s].route6[r].ipv6route, session[new_s].route6[r].ipv6prefixlen, new_s);
-						}
-
-						if (session[new_s].ipv6address.s6_addr[0])
-						{
-							cache_ipv6map(session[new_s].ipv6address, 128, new_s);
-						}
-					}
+					mem_num = ml;
+					break;
 				}
 			}
 
-			cluster_send_bundle(b);
+			// Only do this if we are actually in the bundle
+			if (ml < bundle[b].num_of_links) {
+				// This session was part of a bundle
+				bundle[b].num_of_links--;
+				LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d (remaining links: %d)\n",s,b,bundle[b].num_of_links);
+				if(bundle[b].num_of_links == 0)
+				{
+					bundleclear(b);
+					LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaining member links)\n",b);
+				}
+				else 
+				{
+					// Adjust the members array to accomodate the new change
+					// It should be here num_of_links instead of num_of_links-1 (previous instruction "num_of_links--")
+					if(bundle[b].members[bundle[b].num_of_links] != s)
+					{
+						bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
+						LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
+
+						// If the killed session is the first of the bundle,
+						// the new first session must be stored in the cache_ipmap
+						// else the function sessionbyip return 0 and the sending not work any more (processipout).
+						if (mem_num == 0)
+						{
+							sessionidt new_s = bundle[b].members[0];
+
+							routed = 0;
+							// Add the route for this session.
+							for (r = 0; r < MAXROUTE && session[new_s].route[r].ip; r++)
+							{
+								int i, prefixlen;
+								in_addr_t ip;
+
+								prefixlen = session[new_s].route[r].prefixlen;
+								ip = session[new_s].route[r].ip;
+
+								if (!prefixlen) prefixlen = 32;
+								ip &= 0xffffffff << (32 - prefixlen);	// Force the ip to be the first one in the route.
+
+								for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
+									cache_ipmap(i, new_s);
+							}
+							cache_ipmap(session[new_s].ip, new_s);
+
+							// IPV6 route
+							for (r = 0; r < MAXROUTE6 && session[new_s].route6[r].ipv6prefixlen; r++)
+							{
+								cache_ipv6map(session[new_s].route6[r].ipv6route, session[new_s].route6[r].ipv6prefixlen, new_s);
+							}
+
+							if (session[new_s].ipv6address.s6_addr[0])
+							{
+								cache_ipv6map(session[new_s].ipv6address, 128, new_s);
+							}
+						}
+					}
+				}
+
+				cluster_send_bundle(b);
+			}
         	}
 	}
 

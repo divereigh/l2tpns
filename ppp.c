@@ -1120,10 +1120,11 @@ int join_bundle(sessionidt s)
 	bundleidt i;
 	bundleidt b;
 
-	if (!session[s].opened)
+	if (!session[s].opened || session[s].die)
 	{
-		LOG(3, s, session[s].tunnel, "Called join_bundle on an unopened session.\n");
-		return -1;                   // not a live session
+		LOG(3, s, session[s].tunnel, "Called join_bundle on an unopened/shutdown session.\n");
+		session[s].ip=0;	    // Make sure that any further shutdown does kill routes etc
+		return 0;                   // not a live session
 	}
 
 	for (i = 1; i < MAXBUNDLE; i++)
@@ -1159,7 +1160,7 @@ int join_bundle(sessionidt s)
 	}
 
 	// No previously created bundle was found for this session, so create a new one
-	if (!(b = new_bundle())) return 0;
+	if (!(b = new_bundle())) return -1;
 
 	session[s].bundle = b;
 	bundle[b].mrru = session[s].mrru;

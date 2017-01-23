@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <netinet/ip6.h>
+#include <time.h>
 #include "dhcp6.h"
 #include "l2tpns.h"
 #include "constants.h"
@@ -1903,6 +1904,15 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		l -= 4;
 		// After this point the pointer should be advanced 4 bytes
 		LOG(4, s, t, "MPPP: 24 bits sequence number:%d\n",seq_num);
+	}
+
+	if (seq_num==0 && this_fragmentation->start_seq!=0) {
+		/* The sequence number has been reset to zero,
+		 * remote must have started again - discard the entire
+		 * fragmentation buffer and start again
+		 */
+		LOG(2, s, t, "MPPP: Sequence number reset by remote\n");
+		memset(this_fragmentation, 0, sizeof(fragmentationt));
 	}
 
 	max_seq = this_bundle->max_seq;

@@ -1,3 +1,10 @@
+l2tpns (2.2.1.2fdn3.19) unstable; urgency=low
+
+  * New revision format.
+  * Sending IPv6_ra more often.
+
+ -- Fernando Alves <fendo@sameswifi.fr>  Tue, 31 Dec 2016 17:15:04 +0200
+
 l2tpns (2.2.1-2fdn3.18) unstable; urgency=low
 
   * Add of the ppp_keepalive option.

@@ -1103,6 +1103,9 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		if (config->debug > 3) dumplcp(q, l);
 
 		tunnelsend(b, l + (q - b), t); // send it
+
+		if (session[s].ppp.phase == Network && session[s].ppp.ipv6cp == Opened)
+			send_ipv6_ra(s, t, NULL); // send a RA
 	}
 	else if (*p == EchoReply)
 	{

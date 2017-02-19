@@ -3824,7 +3824,7 @@ static void regular_cleanups(double period)
 		if (session[s].ppp.phase >= Establish &&
                     ((!config->ppp_keepalive) ||
                      (time_now - session[s].last_packet >= config->echo_timeout)) &&
-		    (time_now - sess_local[s].last_echo >= ECHO_TIMEOUT))
+		    (time_now - sess_local[s].last_echo >= config->echo_timeout))
 		{
 			uint8_t b[MAXETHER];
 

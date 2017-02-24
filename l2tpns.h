@@ -207,6 +207,9 @@ enum {
 		case Opened:					\
 			sess_local[_s]._fsm.restart = 0;	\
 			initialise_restart_count(_s, _fsm);	\
+			break;					\
+		default:					\
+			break;					\
 		}						\
 		session[_s].ppp._fsm = _new;			\
 		cluster_send_session(_s);			\

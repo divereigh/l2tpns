@@ -549,7 +549,7 @@ static void pppoe_send_PADT(uint16_t sid)
 {
 	uint8_t pack[ETHER_MAX_LEN];
 
-	setup_header(pack, config->pppoe_hwaddr, session[sid].src_hwaddr, CODE_PADT, sid, ETH_P_PPP_DISC);
+	setup_header(pack, config->pppoe_hwaddr, session[sid].src_hwaddr, CODE_PADT, config->pppoe_client ? pppoe_remote_sid : sid, ETH_P_PPP_DISC);
 
 	add_tag(pack, TAG_AC_NAME, (uint8_t *)config->pppoe_ac_name, strlen(config->pppoe_ac_name));
 

@@ -395,8 +395,13 @@ void lcp_open(sessionidt s, tunnelidt t)
 
 	if (session[s].ppp.phase == Authenticate)
 	{
-		if (sess_local[s].lcp_authtype == AUTHCHAP)
-			sendchap(s, t);
+		LOG(3, s, t, "LCP: Opened: client=%d, authtype=%d\n", session[s].flags & SESSION_CLIENT, sess_local[s].lcp_authtype);
+		if ((session[s].flags & SESSION_CLIENT) && sess_local[s].lcp_authtype == AUTHPAP) {
+			sendpap(s, t);
+		} else {
+			if (sess_local[s].lcp_authtype == AUTHCHAP)
+				sendchap(s, t);
+		}
 	}
 	else
 	{
@@ -2593,6 +2598,55 @@ void sendchap(sessionidt s, tunnelidt t)
 	strcpy((char *) q + 21, config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname);	// our name
 	*(uint16_t *) (q + 2) = htons(strlen(config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname) + 21); // length
 	tunnelsend(b, strlen(config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname) + 21 + (q - b), t); // send it
+}
+
+// send a PAP auth
+void sendpap(sessionidt s, tunnelidt t)
+{
+	uint8_t b[MAXETHER];
+	uint16_t r;
+	uint8_t *q, *p;
+
+#if 0
+	r = radiusnew(s);
+	if (!r)
+	{
+		LOG(1, s, t, "No RADIUS to send challenge\n");
+		STAT(tunnel_tx_errors);
+		return;
+	}
+
+	LOG(1, s, t, "Send CHAP challenge\n");
+
+	radius[r].chap = 1;		// CHAP not PAP
+	radius[r].id++;
+	if (radius[r].state != RADIUSCHAP)
+		radius[r].try = 0;
+
+	radius[r].state = RADIUSCHAP;
+	radius[r].retry = backoff(radius[r].try++);
+	if (radius[r].try > 5)
+	{
+		sessionshutdown(s, "CHAP timeout.", CDN_ADMIN_DISC, TERM_REAUTHENTICATION_FAILURE);
+		STAT(tunnel_tx_errors);
+		return ;
+	}
+#endif
+	LOG(1, s, t, "Send PAP auth\n");
+	q = makeppp(b, sizeof(b), 0, 0, s, t, PPPPAP, 0, 0, 0);
+	if (!q) return;
+
+	*q = 1;					// auth request
+	q[1] = 1;				// ID
+	p=q+4;
+	*p = strlen(session[s].user);		// size of peer-id (username)
+	memcpy(p + 1, session[s].user, strlen(session[s].user)); // peer-id
+	p+=strlen(session[s].user)+1;
+	*p = strlen(session[s].password);		// size of peer-id (username)
+	memcpy(p + 1, session[s].password, strlen(session[s].password)); // peer-id
+	p+=strlen(session[s].password)+1;
+	*(uint16_t *) (q + 2) = htons(p-q); // length
+	tunnelsend(b, p-b, t); // send it
 }
 
 // fill in a L2TP message with a PPP frame,

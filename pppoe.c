@@ -54,6 +54,10 @@ static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 #define TAG_AC_SYSTEM_ERROR    0x0202
 #define TAG_GENERIC_ERROR      0x0203
 
+static uint8_t mac_broadcast[]={ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+static uint16_t pppoe_local_sid;
+static uint16_t pppoe_remote_sid;
+
 static char *code_pad[] = {
 	"PADI",
 	"PADO",
@@ -73,6 +77,8 @@ enum
 	INDEX_PADT,
 	INDEX_SESS
 };
+
+static void pppoe_send_PADI();
 
 // set up pppoe discovery socket
 static void init_pppoe_disc(void)
@@ -240,8 +246,25 @@ void init_pppoe(void)
 		config->cluster_highest_tunnelid = t;
 
 	memset(&tunnel[t], 0, sizeof(tunnel[t]));
-	tunnel[t].state = TUNNELOPEN;
+	
 	STAT(tunnel_created);
+}
+
+void start_pppoe(void)
+{
+	tunnelidt t = TUNNEL_ID_PPPOE;
+
+	if (tunnel[t].state != TUNNELOPEN) {
+		if (config->pppoe_client) {
+			if (tunnel[t].retry <= time_now) {
+				pppoe_send_PADI();
+				tunnel[t].state = TUNNELDISCPADI;
+				tunnel[t].retry = time_now + 2;
+			}
+		} else {
+			tunnel[t].state = TUNNELOPEN;
+		}
+	}
 }
 
 char * get_string_codepad(uint8_t codepad)
@@ -300,6 +323,15 @@ static uint8_t * setup_header(uint8_t *pack, const uint8_t *src, const uint8_t *
 	return p;
 }
 
+static void end_tag(uint8_t *pack)
+{
+	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
+	struct pppoe_tag *tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length));
+
+	tag->tag_type = htons(TAG_END_OF_LIST);
+	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag));
+}
+
 static void add_tag(uint8_t *pack, int type, const uint8_t *data, int len)
 {
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
@@ -308,7 +340,6 @@ static void add_tag(uint8_t *pack, int type, const uint8_t *data, int len)
 	tag->tag_type = htons(type);
 	tag->tag_len = htons(len);
 	memcpy(tag->tag_data, data, len);
-
 	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag) + len);
 }
 
@@ -354,7 +385,13 @@ void pppoe_sess_send(const uint8_t *pack, uint16_t l, tunnelidt t)
 		return;
 	}
 
-	s = ntohs(hdr->sid);
+	if (config->pppoe_client) {
+		s = pppoe_local_sid;
+	} else {
+		s = ntohs(hdr->sid);
+	}
+
+	LOG(3, 0, t, "sid=%d, pppoe_local_sid=%d, pppoe_remote_sid=%d\n", t, pppoe_local_sid, pppoe_remote_sid);
 	if (session[s].tunnel != t)
 	{
 		LOG(3, s, t, "ERROR pppoe_sess_send: Session is not a session pppoe\n");
@@ -420,6 +457,27 @@ static int pppoe_check_cookie(const uint8_t *serv_hwaddr, const uint8_t *client_
 	return memcmp(hash, cookie, 16);
 }
 
+// Only used in client mode
+static void pppoe_send_PADI()
+{
+	uint8_t pack[ETHER_MAX_LEN];
+	/* Allows for a 64-bit PID */
+	uint64_t hostUniq;
+
+	hostUniq=getpid();
+
+	setup_header(pack, config->pppoe_hwaddr, mac_broadcast, CODE_PADI, 0, ETH_P_PPP_DISC);
+
+	add_tag(pack, TAG_HOST_UNIQ, (uint8_t *) &hostUniq, sizeof(hostUniq));
+
+	// if (*config->pppoe_service_name)
+		add_tag(pack, TAG_SERVICE_NAME, (uint8_t *) config->pppoe_service_name, strlen(config->pppoe_service_name));
+	//end_tag(pack);
+
+	pppoe_disc_send(pack);
+}
+
+// Only used in server mode
 static void pppoe_send_PADO(const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name)
 {
 	uint8_t pack[ETHER_MAX_LEN];
@@ -444,6 +502,27 @@ static void pppoe_send_PADO(const uint8_t *addr, const struct pppoe_tag *host_un
 	pppoe_disc_send(pack);
 }
 
+// Only used in client mode
+static void pppoe_send_PADR(uint16_t sid, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *service_name, const struct pppoe_tag *ac_cookie_tag)
+{
+	tunnelidt t = TUNNEL_ID_PPPOE;
+	uint8_t pack[ETHER_MAX_LEN];
+
+	setup_header(pack, config->pppoe_hwaddr, addr, CODE_PADR, sid, ETH_P_PPP_DISC);
+
+	add_tag2(pack, service_name);
+
+	add_tag2(pack, ac_cookie_tag);
+
+	if (host_uniq)
+		add_tag2(pack, host_uniq);
+	
+	pppoe_disc_send(pack);
+	tunnel[t].state = TUNNELDISCPADR;
+	tunnel[t].retry = time_now + 5;
+}
+
+// Only used in server mode
 static void pppoe_send_PADS(uint16_t sid, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name)
 {
 	uint8_t pack[ETHER_MAX_LEN];
@@ -463,6 +542,7 @@ static void pppoe_send_PADS(uint16_t sid, const uint8_t *addr, const struct pppo
 	pppoe_disc_send(pack);
 }
 
+// Server or client mode
 static void pppoe_send_PADT(uint16_t sid)
 {
 	uint8_t pack[ETHER_MAX_LEN];
@@ -488,6 +568,7 @@ void pppoe_shutdown_session(sessionidt s)
 	pppoe_send_PADT(s);
 }
 
+// Only used in server mode
 static void pppoe_recv_PADI(uint8_t *pack, int size)
 {
 	struct ethhdr *ethhdr = (struct ethhdr *)pack;
@@ -550,6 +631,86 @@ static void pppoe_recv_PADI(uint8_t *pack, int size)
 	pppoe_send_PADO(ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag);
 }
 
+// Only used in client mode
+static void pppoe_recv_PADO(uint8_t *pack, int size)
+{
+	tunnelidt t = TUNNEL_ID_PPPOE;
+	struct ethhdr *ethhdr = (struct ethhdr *)pack;
+	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
+	struct pppoe_tag *tag;
+	struct pppoe_tag *host_uniq_tag = NULL;
+	struct pppoe_tag *relay_sid_tag = NULL;
+	struct pppoe_tag *ac_cookie_tag = NULL;
+	struct pppoe_tag *service_name_tag = NULL;
+	int n, service_match = 0;
+
+	if (tunnel[t].state != TUNNELDISCPADI) {
+		LOG(1, 0, 0, "Rcv pppoe: discard PADO (not expecting it)\n");
+		return;
+	}
+
+	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN))
+	{
+		LOG(1, 0, 0, "Rcv pppoe: discard PADO (destination address is broadcast)\n");
+		return;
+	}
+
+	if (hdr->sid)
+	{
+		LOG(1, 0, 0, "Rcv pppoe: discarding PADO packet (sid is not zero)\n");
+		return;
+	}
+
+	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len))
+	{
+		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
+		switch (ntohs(tag->tag_type))
+		{
+			case TAG_END_OF_LIST:
+				break;
+			case TAG_SERVICE_NAME:
+				service_name_tag = tag;
+				if (tag->tag_len == 0)
+					service_match = 1;
+				else if (*config->pppoe_service_name)
+				{
+					if (ntohs(tag->tag_len) != strlen(config->pppoe_service_name))
+						break;
+					if (memcmp(tag->tag_data, config->pppoe_service_name, ntohs(tag->tag_len)))
+						break;
+					service_match = 1;
+				}
+				else
+				{
+					service_match = 1;
+				}
+				break;
+			case TAG_HOST_UNIQ:
+				host_uniq_tag = tag;
+				break;
+			case TAG_AC_COOKIE:
+				ac_cookie_tag = tag;
+				break;
+			case TAG_RELAY_SESSION_ID:
+				relay_sid_tag = tag;
+				break;
+		}
+	}
+
+	if (!service_match)
+	{
+		LOG(3, 0, 0, "pppoe: Service-Name mismatch\n");
+		pppoe_send_err(ethhdr->h_source, host_uniq_tag, relay_sid_tag, CODE_PADS, TAG_SERVICE_NAME_ERROR);
+		return;
+	}
+
+	// TODO - check hostUniq
+
+	pppoe_send_PADR(hdr->sid, ethhdr->h_source, host_uniq_tag, service_name_tag, ac_cookie_tag);
+
+}
+
+// Only used in server mode
 static void pppoe_recv_PADR(uint8_t *pack, int size)
 {
 	struct ethhdr *ethhdr = (struct ethhdr *)pack;
@@ -671,6 +832,122 @@ static void pppoe_recv_PADR(uint8_t *pack, int size)
 
 }
 
+// WORKHERE
+// Only used in client mode
+static void pppoe_recv_PADS(uint8_t *pack, int size)
+{
+	tunnelidt t = TUNNEL_ID_PPPOE;
+	struct ethhdr *ethhdr = (struct ethhdr *)pack;
+	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
+	struct pppoe_tag *tag;
+	struct pppoe_tag *host_uniq_tag = NULL;
+	struct pppoe_tag *relay_sid_tag = NULL;
+	struct pppoe_tag *ac_cookie_tag = NULL;
+	struct pppoe_tag *service_name_tag = NULL;
+	int n, service_match = 0;
+	uint16_t sid;
+
+	if (tunnel[t].state != TUNNELDISCPADR) {
+		LOG(1, 0, 0, "Rcv pppoe: discard PADS (not expecting it)\n");
+		return;
+	}
+
+	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN))
+	{
+		LOG(1, 0, 0, "Rcv pppoe: discard PADS (destination address is broadcast)\n");
+		return;
+	}
+
+	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len))
+	{
+		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
+		switch (ntohs(tag->tag_type))
+		{
+			case TAG_END_OF_LIST:
+				break;
+			case TAG_SERVICE_NAME:
+				service_name_tag = tag;
+				if (tag->tag_len == 0)
+					service_match = 1;
+				else if (*config->pppoe_service_name)
+				{
+					if (ntohs(tag->tag_len) != strlen(config->pppoe_service_name))
+						break;
+					if (memcmp(tag->tag_data, config->pppoe_service_name, ntohs(tag->tag_len)))
+						break;
+					service_match = 1;
+				}
+				else
+				{
+					service_match = 1;
+				}
+				break;
+			case TAG_HOST_UNIQ:
+				host_uniq_tag = tag;
+				break;
+			case TAG_AC_COOKIE:
+				ac_cookie_tag = tag;
+				break;
+			case TAG_RELAY_SESSION_ID:
+				relay_sid_tag = tag;
+				break;
+		}
+	}
+
+	if (!service_match)
+	{
+		LOG(3, 0, 0, "pppoe: Service-Name mismatch\n");
+		pppoe_send_err(ethhdr->h_source, host_uniq_tag, relay_sid_tag, CODE_PADS, TAG_SERVICE_NAME_ERROR);
+		return;
+	}
+
+	// TODO - check hostUniq
+	tunnel[t].state = TUNNELOPEN;
+
+	sid = sessionfree;
+	sessionfree = session[sid].next;
+	memset(&session[sid], 0, sizeof(session[0]));
+
+	pppoe_local_sid=sid;
+	pppoe_remote_sid=ntohs(hdr->sid);
+
+	if (sid > config->cluster_highest_sessionid)
+		config->cluster_highest_sessionid = sid;
+
+	session[sid].opened = time_now;
+	session[sid].tunnel = TUNNEL_ID_PPPOE;
+	session[sid].last_packet = session[sid].last_data = time_now;
+
+	//strncpy(session[sid].called, called, sizeof(session[sid].called) - 1);
+	//strncpy(session[sid].calling, calling, sizeof(session[sid].calling) - 1);
+
+	session[sid].ppp.phase = Establish;
+	session[sid].ppp.lcp = Starting;
+
+	session[sid].magic = time_now; // set magic number
+	session[sid].mru = PPPoE_MRU; // default
+
+	// Set this session to be a client
+	session[sid].flags |= SESSION_CLIENT;
+	LOG(3, 0, 0, "pppoe: flags=%d\n", session[sid].flags & SESSION_CLIENT);
+	strncpy(session[sid].user, config->pppoe_username, MAXUSER-1);
+	strncpy(session[sid].password, config->pppoe_password, MAXPASS-1);
+
+	// start LCP
+	sess_local[sid].lcp_authtype = config->radius_authprefer;
+	sess_local[sid].ppp_mru = MRU;
+
+	// Set multilink options before sending initial LCP packet
+	sess_local[sid].mp_mrru = 1614;
+	sess_local[sid].mp_epdis = ntohl(config->iftun_address ? config->iftun_address : my_address);
+
+	memcpy(session[sid].src_hwaddr, ethhdr->h_source, ETH_ALEN);
+
+	sendlcp(sid, session[sid].tunnel);
+	change_state(sid, lcp, RequestSent);
+}
+
+// Server or client mode
 static void pppoe_recv_PADT(uint8_t *pack)
 {
 	struct ethhdr *ethhdr = (struct ethhdr *)pack;
@@ -708,7 +985,7 @@ uint8_t *pppoe_makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tu
 	}
 
 	// 14 bytes ethernet Header + 6 bytes header pppoe
-	b = setup_header(b, config->pppoe_hwaddr, session[s].src_hwaddr, CODE_SESS, s, ETH_P_PPP_SES);
+	b = setup_header(b, config->pppoe_hwaddr, session[s].src_hwaddr, CODE_SESS, config->pppoe_client ? pppoe_remote_sid : s, ETH_P_PPP_SES);
 
 	// Check whether this session is part of multilink
 	if (bid)
@@ -829,7 +1106,7 @@ uint8_t *opt_pppoe_makeppp(uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_
 
 	// 14 bytes ethernet Header + 6 bytes header pppoe
 	b -= (ETH_HLEN + sizeof(*hdr));
-	setup_header(b, config->pppoe_hwaddr, session[s].src_hwaddr, CODE_SESS, s, ETH_P_PPP_SES);
+	setup_header(b, config->pppoe_hwaddr, session[s].src_hwaddr, CODE_SESS, config->pppoe_client ? pppoe_remote_sid : s, ETH_P_PPP_SES);
 	hdr = (struct pppoe_hdr *)(b + ETH_HLEN);
 	// Store length on header pppoe
 	hdr->length = hdrlen;
@@ -901,8 +1178,14 @@ void process_pppoe_disc(uint8_t *pack, int size)
 		case CODE_PADI:
 			pppoe_recv_PADI(pack, size);
 			break;
+		case CODE_PADO:
+			pppoe_recv_PADO(pack, size);
+			break;
 		case CODE_PADR:
 			pppoe_recv_PADR(pack, size);
+			break;
+		case CODE_PADS:
+			pppoe_recv_PADS(pack, size);
 			break;
 		case CODE_PADT:
 			pppoe_recv_PADT(pack);
@@ -1052,7 +1335,14 @@ void process_pppoe_sess(uint8_t *pack, int size)
 	uint8_t *pppdata = (uint8_t *) hdr->tag;
 	uint16_t proto, sid, t;
 
-	sid = ntohs(hdr->sid);
+	if (config->pppoe_client) {
+		sid = pppoe_local_sid;
+		if (pppoe_remote_sid!=ntohs(hdr->sid)) {
+			LOG(0, sid, t, "Received pppoe packet with invalid session ID\n");
+		}
+	} else {
+		sid = ntohs(hdr->sid);
+	}
 	t = TUNNEL_ID_PPPOE;
 
 	LOG_HEX(5, "RCV PPPOE Sess", pack, size);

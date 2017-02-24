@@ -6,6 +6,7 @@
 
 // pppoe.c
 void init_pppoe(void);
+void start_pppoe(void);
 void process_pppoe_disc(uint8_t *pack, int size);
 void process_pppoe_sess(uint8_t *pack, int size);
 void pppoe_sess_send(const uint8_t *pack, uint16_t l, tunnelidt t);

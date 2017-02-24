@@ -332,6 +332,7 @@ typedef struct
 	int random_vector_length;
 	uint8_t random_vector[MAXTEL];
 	char user[MAXUSER];		// user (needed in session for radius stop messages)
+	char password[MAXPASS];		// password (needed for client session)
 	char called[MAXTEL];		// called number
 	char calling[MAXTEL];		// calling number
 	uint32_t tx_connect_speed;
@@ -450,6 +451,7 @@ typedef struct
 #define SESSION_PFC	(1 << 0)	// use Protocol-Field-Compression
 #define SESSION_ACFC	(1 << 1)	// use Address-and-Control-Field-Compression
 #define SESSION_STARTED	(1 << 2)	// RADIUS Start record sent
+#define SESSION_CLIENT	(1 << 3)	// Is this a client session
 
 // 328 bytes per tunnel
 typedef struct
@@ -527,6 +529,8 @@ enum
 	TUNNELOPEN,		// Active tunnel
 	TUNNELDIE,		// Currently closing
 	TUNNELOPENING,		// Busy opening
+	TUNNELDISCPADI,		// PPPOE Discovery PADI Sent
+	TUNNELDISCPADR,		// PPPOE Discovery PADR Sent
 	TUNNELUNDEF,		// Undefined
 };
 
@@ -798,6 +802,9 @@ typedef struct
 	char pppoe_if_to_bind[IFNAMSIZ];	// Name pppoe interface to bind
 	char pppoe_service_name[64];	// pppoe service name
 	char pppoe_ac_name[64];
+	int pppoe_client;		// Are we running in pppoe-client mode
+	char pppoe_username[64];		// pppoe-client username
+	char pppoe_password[64];		// pppoe-client password
 	uint8_t pppoe_hwaddr[ETH_ALEN];	// MAC addr of interface pppoe to bind
 	int pppoe_only_equal_svc_name; // Accept only PADI with service-name equal to server
 	int disable_sending_hello; // Disable l2tp sending HELLO message for Apple compatibility.
@@ -937,6 +944,7 @@ void processmpframe(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l, uint8_t e
 void processipv6in(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void processccp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l);
 void sendchap(sessionidt s, tunnelidt t);
+void sendpap(sessionidt s, tunnelidt t);
 uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype, uint8_t prio, bundleidt bid, uint8_t mp_bits);
 uint8_t *opt_makeppp(uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtype, uint8_t prio, bundleidt bid, uint8_t mp_bits);
 void sendlcp(sessionidt s, tunnelidt t);

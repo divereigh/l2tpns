@@ -187,6 +187,9 @@ config_descriptt config_values[] = {
 	CONFIG("pppoe_if_to_bind", pppoe_if_to_bind, STRING),
 	CONFIG("pppoe_service_name", pppoe_service_name, STRING),
 	CONFIG("pppoe_ac_name", pppoe_ac_name, STRING),
+	CONFIG("pppoe_client", pppoe_client, BOOL),
+	CONFIG("pppoe_username", pppoe_username, STRING),
+	CONFIG("pppoe_password", pppoe_password, STRING),
 	CONFIG("disable_sending_hello", disable_sending_hello, BOOL),
 	CONFIG("disable_no_spoof", disable_no_spoof, BOOL),
 	CONFIG("bind_multi_address", bind_multi_address, STRING),
@@ -3607,8 +3610,10 @@ static void regular_cleanups(double period)
 		if (t > config->cluster_highest_tunnelid)
 			t = 1;
 
-		if (t == TUNNEL_ID_PPPOE)
+		if (t == TUNNEL_ID_PPPOE) {
+			start_pppoe();
 			continue;
+		}
 
 		// check for expired tunnels
 		if (tunnel[t].die && tunnel[t].die <= TIME)

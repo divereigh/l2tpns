@@ -2604,34 +2604,8 @@ void sendchap(sessionidt s, tunnelidt t)
 void sendpap(sessionidt s, tunnelidt t)
 {
 	uint8_t b[MAXETHER];
-	uint16_t r;
 	uint8_t *q, *p;
 
-#if 0
-	r = radiusnew(s);
-	if (!r)
-	{
-		LOG(1, s, t, "No RADIUS to send challenge\n");
-		STAT(tunnel_tx_errors);
-		return;
-	}
-
-	LOG(1, s, t, "Send CHAP challenge\n");
-
-	radius[r].chap = 1;		// CHAP not PAP
-	radius[r].id++;
-	if (radius[r].state != RADIUSCHAP)
-		radius[r].try = 0;
-
-	radius[r].state = RADIUSCHAP;
-	radius[r].retry = backoff(radius[r].try++);
-	if (radius[r].try > 5)
-	{
-		sessionshutdown(s, "CHAP timeout.", CDN_ADMIN_DISC, TERM_REAUTHENTICATION_FAILURE);
-		STAT(tunnel_tx_errors);
-		return ;
-	}
-#endif
 	LOG(1, s, t, "Send PAP auth\n");
 	q = makeppp(b, sizeof(b), 0, 0, s, t, PPPPAP, 0, 0, 0);
 	if (!q) return;

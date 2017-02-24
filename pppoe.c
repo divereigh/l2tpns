@@ -323,6 +323,7 @@ static uint8_t * setup_header(uint8_t *pack, const uint8_t *src, const uint8_t *
 	return p;
 }
 
+#if 0
 static void end_tag(uint8_t *pack)
 {
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
@@ -331,6 +332,7 @@ static void end_tag(uint8_t *pack)
 	tag->tag_type = htons(TAG_END_OF_LIST);
 	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag));
 }
+#endif
 
 static void add_tag(uint8_t *pack, int type, const uint8_t *data, int len)
 {
@@ -832,7 +834,6 @@ static void pppoe_recv_PADR(uint8_t *pack, int size)
 
 }
 
-// WORKHERE
 // Only used in client mode
 static void pppoe_recv_PADS(uint8_t *pack, int size)
 {
@@ -842,8 +843,8 @@ static void pppoe_recv_PADS(uint8_t *pack, int size)
 	struct pppoe_tag *tag;
 	struct pppoe_tag *host_uniq_tag = NULL;
 	struct pppoe_tag *relay_sid_tag = NULL;
-	struct pppoe_tag *ac_cookie_tag = NULL;
-	struct pppoe_tag *service_name_tag = NULL;
+	// struct pppoe_tag *ac_cookie_tag = NULL;
+	// struct pppoe_tag *service_name_tag = NULL;
 	int n, service_match = 0;
 	uint16_t sid;
 
@@ -866,7 +867,7 @@ static void pppoe_recv_PADS(uint8_t *pack, int size)
 			case TAG_END_OF_LIST:
 				break;
 			case TAG_SERVICE_NAME:
-				service_name_tag = tag;
+				// service_name_tag = tag;
 				if (tag->tag_len == 0)
 					service_match = 1;
 				else if (*config->pppoe_service_name)
@@ -885,9 +886,9 @@ static void pppoe_recv_PADS(uint8_t *pack, int size)
 			case TAG_HOST_UNIQ:
 				host_uniq_tag = tag;
 				break;
-			case TAG_AC_COOKIE:
-				ac_cookie_tag = tag;
-				break;
+			// case TAG_AC_COOKIE:
+			// 	ac_cookie_tag = tag;
+			// 	break;
 			case TAG_RELAY_SESSION_ID:
 				relay_sid_tag = tag;
 				break;
@@ -1335,6 +1336,7 @@ void process_pppoe_sess(uint8_t *pack, int size)
 	uint8_t *pppdata = (uint8_t *) hdr->tag;
 	uint16_t proto, sid, t;
 
+	t = TUNNEL_ID_PPPOE;
 	if (config->pppoe_client) {
 		sid = pppoe_local_sid;
 		if (pppoe_remote_sid!=ntohs(hdr->sid)) {
@@ -1343,7 +1345,6 @@ void process_pppoe_sess(uint8_t *pack, int size)
 	} else {
 		sid = ntohs(hdr->sid);
 	}
-	t = TUNNEL_ID_PPPOE;
 
 	LOG_HEX(5, "RCV PPPOE Sess", pack, size);
 

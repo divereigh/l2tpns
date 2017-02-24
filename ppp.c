@@ -431,9 +431,9 @@ void lcp_restart(sessionidt s)
 {
 	session[s].ppp.phase = Establish;
 	// This-Layer-Down
-	change_state(s, ipcp, Dead);
-	change_state(s, ipv6cp, Dead);
-	change_state(s, ccp, Dead);
+	change_state(s, ipcp, Initial);
+	change_state(s, ipv6cp, Initial);
+	change_state(s, ccp, Initial);
 }
 
 static uint8_t *ppp_conf_rej(sessionidt s, uint8_t *buf, size_t blen, uint16_t mtype,

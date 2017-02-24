@@ -5006,7 +5006,7 @@ static void initippool()
 	FILE *f;
 	char *p;
 	char buf[4096];
-	memset(ip_address_pool, 0, sizeof(ip_address_pool));
+	memset(ip_address_pool, 0, sizeof(ippoolt) * MAXIPPOOL);
 
 	if (!(f = fopen(IPPOOLFILE, "r")))
 	{

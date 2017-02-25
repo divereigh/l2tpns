@@ -16,6 +16,7 @@
 
 #include "l2tplac.h"
 #include "pppoe.h"
+#include "md5.h"
 
 extern tunnelt *tunnel;
 extern bundlet *bundle;
@@ -167,6 +168,17 @@ void processpap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	}
 }
 
+static void gen_chap_hash(uint8_t id, const uint8_t *challenge, size_t len, const char *secret, uint8_t *out)
+{
+	MD5_CTX ctx;
+
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, (void *)&id, 1); // id
+	MD5_Update(&ctx, (void *)secret, strlen(secret));
+	MD5_Update(&ctx, (void *)challenge, len); // challenge
+	MD5_Final(out, &ctx);
+}
+
 // Process CHAP messages
 void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 {
@@ -194,12 +206,22 @@ void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	}
 	l = hl;
 
-	if (*p != 2)
-	{
-		LOG(1, s, t, "Unexpected CHAP response code %d\n", *p);
-		STAT(tunnel_rx_errors);
-		sessionshutdown(s, "CHAP length mismatch.", CDN_ADMIN_DISC, TERM_USER_ERROR);
-		return;
+	if (session[s].flags & SESSION_CLIENT) {
+		if (*p != 1 && *p != 3 && *p != 4)
+		{
+			LOG(1, s, t, "Expected CHAP challenge/success/fail not code %d\n", *p);
+			STAT(tunnel_rx_errors);
+			sessionshutdown(s, "CHAP bad message", CDN_ADMIN_DISC, TERM_USER_ERROR);
+			return;
+		}
+	} else {
+		if (*p != 2)
+		{
+			LOG(1, s, t, "Unexpected CHAP response code %d\n", *p);
+			STAT(tunnel_rx_errors);
+			sessionshutdown(s, "CHAP length mismatch.", CDN_ADMIN_DISC, TERM_USER_ERROR);
+			return;
+		}
 	}
 
 	if (session[s].ppp.phase != Authenticate)
@@ -208,90 +230,136 @@ void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		return;
 	}
 
-	r = sess_local[s].radius;
-	if (!r)
-	{
-		LOG(3, s, t, "Unexpected CHAP message\n");
+	if (session[s].flags & SESSION_CLIENT) {
+		if (*p==1) { // Challenge
+			uint8_t b[MAXETHER];
+			uint8_t challenge[MAXPASS];
+			size_t challenge_len;
+			uint8_t id;
+			hasht hash;
+			uint8_t *q;
 
-		// Some modems (Netgear DM602, possibly others) persist in using CHAP even
-		// after ACKing our ConfigReq for PAP.
-		if (sess_local[s].lcp_authtype == AUTHPAP && config->radius_authtypes & AUTHCHAP)
-		{
-			sess_local[s].lcp_authtype = AUTHCHAP;
-			sendchap(s, t);
+			if (l < 5 || l < p[4]+5 || p[4]>MAXPASS)
+			{
+				LOG(1, s, t, "Bad CHAP challenge length %d\n", l < 5 ? -1 : p[4]);
+				STAT(tunnel_rx_errors);
+				sessionshutdown(s, "Bad CHAP challenge length.", CDN_ADMIN_DISC, TERM_USER_ERROR);
+				return;
+			}
+
+			id=p[1];
+
+			challenge_len=p[4];
+			memcpy(challenge, p+5, challenge_len);
+			gen_chap_hash(id, challenge, challenge_len, session[s].password, hash);
+			
+			q = makeppp(b, sizeof(b), 0, 0, s, t, PPPCHAP, 0, 0, 0);
+			if (!q) return;
+
+			*q = 2;					// response
+			q[1] = id;				// ID
+			q[4] = 16;				// value size (size of hash response)
+			memcpy(q + 5, hash, 16);		// response hash
+			strcpy((char *) q + 21, session[s].user);	// our user
+			*(uint16_t *) (q + 2) = htons(strlen(session[s].user) + 21); // length
+			tunnelsend(b, strlen(session[s].user) + 21 + (q - b), t); // send it
+		} else if (*p==3) { // Success
+			LOG(1, s, t, "CHAP auth succeeded\n");
+			// Valid Session, set it up
+			session[s].unique_id = 0;
+			sessionsetup(s, t);
+		} else { // Fail
+			LOG(1, s, t, "CHAP auth failed\n");
+			STAT(tunnel_tx_errors);
+			sessionshutdown(s, "CHAP auth failed.", CDN_ADMIN_DISC, TERM_USER_ERROR);
+			return;
 		}
-		return;
-	}
-
-	if (p[1] != radius[r].id)
-	{
-		LOG(1, s, t, "Wrong CHAP response ID %d (should be %d) (%d)\n", p[1], radius[r].id, r);
-		STAT(tunnel_rx_errors);
-		sessionshutdown(s, "Unexpected CHAP response ID.", CDN_ADMIN_DISC, TERM_USER_ERROR);
-		return;
-	}
-
-	if (l < 5 || p[4] != 16)
-	{
-		LOG(1, s, t, "Bad CHAP response length %d\n", l < 5 ? -1 : p[4]);
-		STAT(tunnel_rx_errors);
-		sessionshutdown(s, "Bad CHAP response length.", CDN_ADMIN_DISC, TERM_USER_ERROR);
-		return;
-	}
-
-	l -= 5;
-	p += 5;
-	if (l < 16 || l - 16 >= sizeof(session[s].user))
-	{
-		LOG(1, s, t, "CHAP user too long %d\n", l - 16);
-		STAT(tunnel_rx_errors);
-		sessionshutdown(s, "CHAP username too long.", CDN_ADMIN_DISC, TERM_USER_ERROR);
-		return;
-	}
-
-	// Run PRE_AUTH plugins
-	{
-		struct param_pre_auth packet = { &tunnel[t], &session[s], NULL, NULL, PPPCHAP, 1 };
-
-		packet.password = calloc(17, 1);
-		memcpy(packet.password, p, 16);
-
-		p += 16;
-		l -= 16;
-
-		packet.username = calloc(l + 1, 1);
-		memcpy(packet.username, p, l);
-
-		if ((!config->disable_lac_func) && lac_conf_forwardtoremotelns(s, packet.username))
+	} else {
+		r = sess_local[s].radius;
+		if (!r)
 		{
+			LOG(3, s, t, "Unexpected CHAP message\n");
+
+			// Some modems (Netgear DM602, possibly others) persist in using CHAP even
+			// after ACKing our ConfigReq for PAP.
+			if (sess_local[s].lcp_authtype == AUTHPAP && config->radius_authtypes & AUTHCHAP)
+			{
+				sess_local[s].lcp_authtype = AUTHCHAP;
+				sendchap(s, t);
+			}
+			return;
+		}
+
+		if (p[1] != radius[r].id)
+		{
+			LOG(1, s, t, "Wrong CHAP response ID %d (should be %d) (%d)\n", p[1], radius[r].id, r);
+			STAT(tunnel_rx_errors);
+			sessionshutdown(s, "Unexpected CHAP response ID.", CDN_ADMIN_DISC, TERM_USER_ERROR);
+			return;
+		}
+
+		if (l < 5 || p[4] != 16)
+		{
+			LOG(1, s, t, "Bad CHAP response length %d\n", l < 5 ? -1 : p[4]);
+			STAT(tunnel_rx_errors);
+			sessionshutdown(s, "Bad CHAP response length.", CDN_ADMIN_DISC, TERM_USER_ERROR);
+			return;
+		}
+
+		l -= 5;
+		p += 5;
+		if (l < 16 || l - 16 >= sizeof(session[s].user))
+		{
+			LOG(1, s, t, "CHAP user too long %d\n", l - 16);
+			STAT(tunnel_rx_errors);
+			sessionshutdown(s, "CHAP username too long.", CDN_ADMIN_DISC, TERM_USER_ERROR);
+			return;
+		}
+
+		// Run PRE_AUTH plugins
+		{
+			struct param_pre_auth packet = { &tunnel[t], &session[s], NULL, NULL, PPPCHAP, 1 };
+
+			packet.password = calloc(17, 1);
+			memcpy(packet.password, p, 16);
+
+			p += 16;
+			l -= 16;
+
+			packet.username = calloc(l + 1, 1);
+			memcpy(packet.username, p, l);
+
+			if ((!config->disable_lac_func) && lac_conf_forwardtoremotelns(s, packet.username))
+			{
+				free(packet.username);
+				free(packet.password);
+				// Creating a tunnel/session has been started
+				return;
+			}
+
+			run_plugins(PLUGIN_PRE_AUTH, &packet);
+			if (!packet.continue_auth)
+			{
+				LOG(3, s, t, "A plugin rejected PRE_AUTH\n");
+				if (packet.username) free(packet.username);
+				if (packet.password) free(packet.password);
+				return;
+			}
+
+			strncpy(session[s].user, packet.username, sizeof(session[s].user) - 1);
+			memcpy(radius[r].pass, packet.password, 16);
+
 			free(packet.username);
 			free(packet.password);
-			// Creating a tunnel/session has been started
-			return;
 		}
 
-		run_plugins(PLUGIN_PRE_AUTH, &packet);
-		if (!packet.continue_auth)
-		{
-			LOG(3, s, t, "A plugin rejected PRE_AUTH\n");
-			if (packet.username) free(packet.username);
-			if (packet.password) free(packet.password);
-			return;
-		}
-
-		strncpy(session[s].user, packet.username, sizeof(session[s].user) - 1);
-		memcpy(radius[r].pass, packet.password, 16);
-
-		free(packet.username);
-		free(packet.password);
+		radius[r].chap = 1;
+		LOG(3, s, t, "CHAP login %s\n", session[s].user);
+		if ((session[s].mrru) && (!first_session_in_bundle(s)))
+			radiussend(r, RADIUSJUSTAUTH);
+		else
+			radiussend(r, RADIUSAUTH);
 	}
-
-	radius[r].chap = 1;
-	LOG(3, s, t, "CHAP login %s\n", session[s].user);
-	if ((session[s].mrru) && (!first_session_in_bundle(s)))
-		radiussend(r, RADIUSJUSTAUTH);
-	else
-		radiussend(r, RADIUSAUTH);
 }
 
 static void dumplcp(uint8_t *p, int l)
@@ -395,9 +463,10 @@ void lcp_open(sessionidt s, tunnelidt t)
 
 	if (session[s].ppp.phase == Authenticate)
 	{
-		LOG(3, s, t, "LCP: Opened: client=%d, authtype=%d\n", session[s].flags & SESSION_CLIENT, sess_local[s].lcp_authtype);
-		if ((session[s].flags & SESSION_CLIENT) && sess_local[s].lcp_authtype == AUTHPAP) {
-			sendpap(s, t);
+		if (session[s].flags & SESSION_CLIENT) {
+			if (sess_local[s].lcp_authtype == AUTHPAP) {
+				sendpap(s, t);
+			}
 		} else {
 			if (sess_local[s].lcp_authtype == AUTHCHAP)
 				sendchap(s, t);
@@ -1321,6 +1390,137 @@ void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		    	LOG(2, s, t, "IPCP: ignoring %s in state %s\n", ppp_code(*p), ppp_state(session[s].ppp.ipcp));
 		}
 	}
+	else if (*p == ConfigNak && (session[s].flags & SESSION_CLIENT))
+	{
+		uint8_t *response = 0;
+		uint8_t *o = p + 4;
+		int length = l - 4;
+		int gotip = 0;
+		in_addr_t addr;
+
+		while (length > 2)
+		{
+			if (!o[1] || o[1] > length) return;
+
+			switch (*o)
+			{
+			case 3: // ip address
+				gotip++; // seen address
+				if (o[1] != 6) return;
+
+				// We accept the remote address
+				memcpy(&addr, o + 2, (sizeof addr));
+				session[s].ip_local=ntohl(addr);
+
+				break;
+
+			case 129: // primary DNS
+				if (o[1] != 6) return;
+
+				addr = htonl(session[s].dns1);
+				if (memcmp(o + 2, &addr, (sizeof addr)))
+				{
+					q = ppp_conf_nak(s, b, sizeof(b), PPPIPCP, &response, q, p, o, (uint8_t *) &addr, sizeof(addr));
+					if (!q) return;
+				}
+
+				break;
+
+			case 131: // secondary DNS
+				if (o[1] != 6) return;
+
+				addr = htonl(session[s].dns2);
+				if (memcmp(o + 2, &addr, sizeof(addr)))
+				{
+					q = ppp_conf_nak(s, b, sizeof(b), PPPIPCP, &response, q, p, o, (uint8_t *) &addr, sizeof(addr));
+					if (!q) return;
+				}
+
+				break;
+
+			default:
+				LOG(2, s, t, "    Rejecting PPP IPCP Option type %d\n", *o);
+				q = ppp_conf_rej(s, b, sizeof(b), PPPIPCP, &response, q, p, o);
+				if (!q) return;
+			}
+
+			length -= o[1];
+			o += o[1];
+		}
+
+		if (response)
+		{
+			l = q - response; // IPCP packet length
+			*((uint16_t *) (response + 2)) = htons(l); // update header
+		}
+		else if (gotip)
+		{
+			// Send packet back as ConfigReq
+			response = makeppp(b, sizeof(b), p, l, s, t, PPPIPCP, 0, 0, 0);
+			if (!response) return;
+			*response = ConfigReq;
+		}
+		else
+		{
+			LOG(1, s, t, "No IP in IPCP request\n");
+			STAT(tunnel_rx_errors);
+			return;
+		}
+
+#if 0
+		switch (session[s].ppp.ipcp)
+		{
+		case Closed:
+			response = makeppp(b, sizeof(b), p, 2, s, t, PPPIPCP, 0, 0, 0);
+			if (!response) return;
+			*response = TerminateAck;
+			*((uint16_t *) (response + 2)) = htons(l = 4);
+			break;
+
+		case Stopped:
+		    	initialise_restart_count(s, ipcp);
+			sendipcp(s, t);
+			if (*response == ConfigAck)
+				change_state(s, ipcp, AckSent);
+			else
+				change_state(s, ipcp, RequestSent);
+
+			break;
+
+		case RequestSent:
+			if (*response == ConfigAck)
+				change_state(s, ipcp, AckSent);
+
+			break;
+
+		case AckReceived:
+			if (*response == ConfigAck)
+				ipcp_open(s, t);
+
+			break;
+
+		case Opened:
+		    	initialise_restart_count(s, ipcp);
+			sendipcp(s, t);
+			/* fallthrough */
+
+		case AckSent:
+			if (*response == ConfigAck)
+				change_state(s, ipcp, AckSent);
+			else
+				change_state(s, ipcp, RequestSent);
+
+			break;
+
+		default:
+		    	LOG(2, s, t, "IPCP: ignoring %s in state %s\n", ppp_code(*p), ppp_state(session[s].ppp.ipcp));
+			return;
+		}
+#endif
+
+		LOG(3, s, t, "IPCP: send %s\n", ppp_code(*response));
+		tunnelsend(b, l + (response - b), t);
+	}
 	else if (*p == ConfigReq)
 	{
 		uint8_t *response = 0;
@@ -1338,6 +1538,12 @@ void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 			case 3: // ip address
 				gotip++; // seen address
 				if (o[1] != 6) return;
+
+				if (session[s].flags & SESSION_CLIENT) {
+					// We accept the remote address
+					memcpy(&addr, o + 2, (sizeof addr));
+					session[s].ip=ntohl(addr);
+				}
 
 				addr = htonl(session[s].ip);
 				if (memcmp(o + 2, &addr, (sizeof addr)))

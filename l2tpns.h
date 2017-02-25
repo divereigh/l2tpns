@@ -308,7 +308,8 @@ typedef struct
 		uint8_t ccp:4;		//   CCP    state
 	} ppp;
 	uint16_t mru;			// maximum receive unit
-	in_addr_t ip;			// IP of session set by RADIUS response (host byte order).
+	in_addr_t ip;			// IP of session set by RADIUS response (remote address) (host byte order).
+	in_addr_t ip_local;		// Local IP when in client (host byte order).
 	int ip_pool_index;		// index to IP pool
 	uint32_t unique_id;		// unique session id
 	uint32_t magic;			// ppp magic number

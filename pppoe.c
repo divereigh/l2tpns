@@ -393,7 +393,6 @@ void pppoe_sess_send(const uint8_t *pack, uint16_t l, tunnelidt t)
 		s = ntohs(hdr->sid);
 	}
 
-	LOG(3, 0, t, "sid=%d, pppoe_local_sid=%d, pppoe_remote_sid=%d\n", t, pppoe_local_sid, pppoe_remote_sid);
 	if (session[s].tunnel != t)
 	{
 		LOG(3, s, t, "ERROR pppoe_sess_send: Session is not a session pppoe\n");

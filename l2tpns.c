@@ -2306,9 +2306,7 @@ void sendipcp(sessionidt s, tunnelidt t)
 	*(uint16_t *) (q + 2) = htons(10);	// packet length
 	q[4] = 3;				// ip address option
 	q[5] = 6;				// option length
-	*(in_addr_t *) (q + 6) = config->peer_address ? config->peer_address :
-				 config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] :
-				 my_address; // send my IP
+	*(in_addr_t *) (q + 6) = session[s].ip_local;
 
 	tunnelsend(buf, 10 + (q - buf), t); // send it
 	restart_timer(s, ipcp);
@@ -5800,17 +5798,23 @@ int sessionsetup(sessionidt s, tunnelidt t)
 		}
 	}
 
-	if (!session[s].ip)
-	{
-		assign_ip_address(s);
+	if (!(session[s].flags & SESSION_CLIENT)) {
+		session[s].ip_local= config->peer_address ? config->peer_address :
+				 config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] :
+				 my_address; // send my IP
+	
 		if (!session[s].ip)
 		{
-			LOG(0, s, t, "   No IP allocated.  The IP address pool is FULL!\n");
-			sessionshutdown(s, "No IP addresses available.", CDN_TRY_ANOTHER, TERM_SERVICE_UNAVAILABLE);
-			return 0;
+			assign_ip_address(s);
+			if (!session[s].ip)
+			{
+				LOG(0, s, t, "   No IP allocated.  The IP address pool is FULL!\n");
+				sessionshutdown(s, "No IP addresses available.", CDN_TRY_ANOTHER, TERM_SERVICE_UNAVAILABLE);
+				return 0;
+			}
+			LOG(3, s, t, "   No IP allocated.  Assigned %s from pool\n",
+				fmtaddr(htonl(session[s].ip), 0));
 		}
-		LOG(3, s, t, "   No IP allocated.  Assigned %s from pool\n",
-			fmtaddr(htonl(session[s].ip), 0));
 	}
 
 	// Make sure this is right

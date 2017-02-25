@@ -267,7 +267,9 @@ void processchap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 			LOG(1, s, t, "CHAP auth succeeded\n");
 			// Valid Session, set it up
 			session[s].unique_id = 0;
-			sessionsetup(s, t);
+			//sessionsetup(s, t);
+			sess_local[s].lcp_authtype = 0;
+			lcp_open(s, t);
 		} else { // Fail
 			LOG(1, s, t, "CHAP auth failed\n");
 			STAT(tunnel_tx_errors);
@@ -1364,7 +1366,7 @@ void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		return;
 	}
 
-	LOG(3, s, t, "IPCP: recv %s\n", ppp_code(*p));
+	LOG(3, s, t, "IPCP: recv %s, IPCP state: %s\n", ppp_code(*p), ppp_state(session[s].ppp.ipcp));
 
 	if (*p == ConfigAck)
 	{
@@ -1383,6 +1385,9 @@ void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 			break;
 
 		case AckSent:
+			if (session[s].flags & SESSION_CLIENT) {
+				sessionsetup_client(s, t);
+			}
 			ipcp_open(s, t);
 			break;
 

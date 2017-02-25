@@ -1011,6 +1011,7 @@ void _log_hex(int level, const char *title, const uint8_t *data, int maxsize);
 
 
 int sessionsetup(sessionidt s, tunnelidt t);
+int sessionsetup_client(sessionidt s, tunnelidt t);
 int run_plugins(int plugin_type, void *data);
 void rebuild_address_pool(void);
 void throttle_session(sessionidt s, int rate_in, int rate_out);

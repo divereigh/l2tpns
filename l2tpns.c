@@ -5798,23 +5798,21 @@ int sessionsetup(sessionidt s, tunnelidt t)
 		}
 	}
 
-	if (!(session[s].flags & SESSION_CLIENT)) {
-		session[s].ip_local= config->peer_address ? config->peer_address :
-				 config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] :
-				 my_address; // send my IP
-	
+	session[s].ip_local= config->peer_address ? config->peer_address :
+			 config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] :
+			 my_address; // send my IP
+
+	if (!session[s].ip)
+	{
+		assign_ip_address(s);
 		if (!session[s].ip)
 		{
-			assign_ip_address(s);
-			if (!session[s].ip)
-			{
-				LOG(0, s, t, "   No IP allocated.  The IP address pool is FULL!\n");
-				sessionshutdown(s, "No IP addresses available.", CDN_TRY_ANOTHER, TERM_SERVICE_UNAVAILABLE);
-				return 0;
-			}
-			LOG(3, s, t, "   No IP allocated.  Assigned %s from pool\n",
-				fmtaddr(htonl(session[s].ip), 0));
+			LOG(0, s, t, "   No IP allocated.  The IP address pool is FULL!\n");
+			sessionshutdown(s, "No IP addresses available.", CDN_TRY_ANOTHER, TERM_SERVICE_UNAVAILABLE);
+			return 0;
 		}
+		LOG(3, s, t, "   No IP allocated.  Assigned %s from pool\n",
+			fmtaddr(htonl(session[s].ip), 0));
 	}
 
 	// Make sure this is right
@@ -5890,6 +5888,79 @@ int sessionsetup(sessionidt s, tunnelidt t)
 
 	sess_local[s].lcp_authtype = 0; // RADIUS authentication complete
 	lcp_open(s, t); // transition to Network phase and send initial IPCP
+
+	// Run the plugin's against this new session.
+	{
+		struct param_new_session data = { &tunnel[t], &session[s] };
+		run_plugins(PLUGIN_NEW_SESSION, &data);
+	}
+
+	// Allocate TBFs if throttled
+	if (session[s].throttle_in || session[s].throttle_out)
+		throttle_session(s, session[s].throttle_in, session[s].throttle_out);
+
+	session[s].last_packet = session[s].last_data = time_now;
+
+	LOG(2, s, t, "Login by %s at %s from %s (%s)\n", session[s].user,
+		fmtaddr(htonl(session[s].ip), 0),
+		fmtaddr(htonl(tunnel[t].ip), 1), tunnel[t].hostname);
+
+	cluster_send_session(s);	// Mark it as dirty, and needing to the flooded to the cluster.
+
+	return 1;       // RADIUS OK and IP allocated, done...
+}
+
+int sessionsetup_client(sessionidt s, tunnelidt t)
+{
+	// A session now exists, set it up
+	int r;
+
+	LOG(3, s, t, "Doing client session setup for session\n");
+
+	// Join a bundle if the MRRU option is accepted
+	if(session[s].mrru > 0 && session[s].bundle == 0)
+	{
+		LOG(3, s, t, "This session can be part of multilink bundle\n");
+		if (join_bundle(s) > 0)
+			cluster_send_bundle(session[s].bundle);
+		else
+		{
+			LOG(0, s, t, "MPPP: Unable to join bundle\n");
+			sessionshutdown(s, "Unable to join bundle", CDN_NONE, TERM_SERVICE_UNAVAILABLE);
+			return 0;
+		}
+	}
+
+	// Make sure this is right
+	session[s].tunnel = t;
+
+	// no need to set a route for the same IP address of the bundle
+	if (!session[s].bundle || (bundle[session[s].bundle].num_of_links == 1))
+	{
+		int routed = 0;
+
+		// Add the route for this session.
+		for (r = 0; r < MAXROUTE && session[s].route[r].ip; r++)
+		{
+			if ((session[s].ip >> (32-session[s].route[r].prefixlen)) ==
+			    (session[s].route[r].ip >> (32-session[s].route[r].prefixlen)))
+				routed++;
+
+			routeset(s, session[s].route[r].ip, session[s].route[r].prefixlen, 0, 1);
+		}
+
+		// Static IPs need to be routed if not already
+		// convered by a Framed-Route.  Anything else is part
+		// of the IP address pool and is already routed, it
+		// just needs to be added to the IP cache.
+		// IPv6 route setup is done in ppp.c, when IPV6CP is acked.
+		if (session[s].ip_pool_index == -1) // static ip
+		{
+			if (!routed) routeset(s, session[s].ip, 0, 0, 1);
+		}
+		else
+			cache_ipmap(session[s].ip, s);
+	}
 
 	// Run the plugin's against this new session.
 	{

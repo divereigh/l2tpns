@@ -18,9 +18,9 @@ CC = gcc
 LD = gcc
 INCLUDES = -I.
 CPPFLAGS = $(INCLUDES) $(DEFINES)
-CFLAGS = -Wall -Wformat-security $(OPTIM)
-LDFLAGS =
-LDLIBS =
+CFLAGS += -Wall -Wformat-security $(OPTIM)
+#LDFLAGS =
+LDLIBS += -lgcc_s -lc
 INSTALL = install -c -D -o root -g root
 
 l2tpns.LIBS = -lcli -ldl

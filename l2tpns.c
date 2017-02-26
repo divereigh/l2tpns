@@ -2432,11 +2432,12 @@ static void tunnelkill(tunnelidt t, char *reason)
 // kill a bundle now
 static void bundlekill(bundleidt b, char *reason)
 {
+	int i;
 
 	CSTAT(bundlekill);
 
 	// kill sessions
-	for (int i = 0; i < bundle[b].num_of_links ; ++i)
+	for (i = 0; i < bundle[b].num_of_links ; ++i)
 		sessionkill(bundle[b].members[i], reason);
 
 	// free bundle

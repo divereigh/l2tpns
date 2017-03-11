@@ -693,6 +693,7 @@ typedef struct
 	int		multi_read_count;		// amount of packets to read per fd in processing loop
 
 	char		tundevicename[IFNAMSIZ];		// tun device name
+	char		ipoedevicename[IFNAMSIZ];		// eth device name (instead of tun)
 	char		log_filename[128];
 
 	char		l2tp_secret[64];		// L2TP shared secret
@@ -810,6 +811,7 @@ typedef struct
 	char pppoe_username[64];		// pppoe-client username
 	char pppoe_password[64];		// pppoe-client password
 	uint8_t pppoe_hwaddr[ETH_ALEN];	// MAC addr of interface pppoe to bind
+	uint8_t eth_hwaddr[ETH_ALEN];	// MAC addr of interface eth to bind
 	int pppoe_only_equal_svc_name; // Accept only PADI with service-name equal to server
 	int disable_sending_hello; // Disable l2tp sending HELLO message for Apple compatibility.
 	int disable_no_spoof; // Disable no spoof (permit load balancing client --> internet)
@@ -1061,7 +1063,8 @@ struct event_data {
 		FD_TYPE_BGP,
 		FD_TYPE_NETLINK,
 		FD_TYPE_PPPOEDISC,
-		FD_TYPE_PPPOESESS
+		FD_TYPE_PPPOESESS,
+		FD_TYPE_IPV4OE
 	} type;
 	int index; // for RADIUS, BGP, UDP
 };

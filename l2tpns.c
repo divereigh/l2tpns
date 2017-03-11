@@ -38,6 +38,7 @@
 #include <libcli.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <netpacket/packet.h>
 
 #include "md5.h"
 #include "dhcp6.h"
@@ -56,6 +57,7 @@
 
 #include "l2tplac.h"
 #include "pppoe.h"
+#include "ipoe.h"
 #include "dhcp6.h"
 
 char * Vendor_name = "Linux L2TPNS";
@@ -180,6 +182,7 @@ config_descriptt config_values[] = {
 	CONFIG("idle_echo_timeout", idle_echo_timeout, INT),
 	CONFIG("iftun_address", iftun_address, IPv4),
 	CONFIG("tundevicename", tundevicename, STRING),
+	CONFIG("ipoedevicename", ipoedevicename, STRING),
 	CONFIG("disable_lac_func", disable_lac_func, BOOL),
 	CONFIG("auth_tunnel_change_addr_src", auth_tunnel_change_addr_src, BOOL),
 	CONFIG("bind_address_remotelns", bind_address_remotelns, IPv4),
@@ -1320,7 +1323,11 @@ void tunnelsend(uint8_t * buf, uint16_t l, tunnelidt t)
 //
 int tun_write(uint8_t * data, int size)
 {
-	return write(tunfd, data, size);
+	if (ipv4oefd != -1) {
+		return ipv4oe_write(data, size);
+	} else {
+		return write(tunfd, data, size);
+	}
 }
 
 // adjust tcp mss to avoid fragmentation (called only for tcp packets with syn set)
@@ -3551,6 +3558,34 @@ static void processtun(uint8_t * buf, int len)
 	// Else discard.
 }
 
+// read and process packet on ethip
+// (i.e. this routine writes to buf[-8]).
+static void processethip(uint8_t * buf, int len)
+{
+	LOG_HEX(5, "Receive ETHIP Data", buf, len);
+	// STAT(tun_rx_packets);
+	// INC_STAT(tun_rx_bytes, len);
+
+	// CSTAT(processtun);
+
+	eth_rx_pkt++;
+	eth_rx += len;
+	if (len < 20 + 2*ETH_ALEN)
+	{
+		LOG(1, 0, 0, "Short tun packet %d bytes\n", len);
+		STAT(tun_rx_errors);
+		return;
+	}
+
+	if (*(uint16_t *) (buf + 2*ETH_ALEN) == htons(PKTIP)) // IPv4
+		processipout(buf + (2*ETH_ALEN-2), len);
+	else if (*(uint16_t *) (buf + 2*ETH_ALEN) == htons(PKTIPV6) // IPV6
+	    && config->ipv6_prefix.s6_addr[0])
+		processipv6out(buf+ (2*ETH_ALEN-2), len);
+
+	// Else discard.
+}
+
 // Handle retries, timeouts.  Runs every 1/10th sec, want to ensure
 // that we look at the whole of the tunnel, radius, bundle and session tables
 // every second
@@ -4153,8 +4188,8 @@ static void mainloop(void)
 		exit(1);
 	}
 
-	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d , udplacfd=%d, pppoefd=%d, pppoesessfd=%d\n",
-		clifd, cluster_sockfd, tunfd, udpfd[0], controlfd, daefd, nlfd, udplacfd, pppoediscfd, pppoesessfd);
+	LOG(4, 0, 0, "Beginning of main loop.  clifd=%d, cluster_sockfd=%d, tunfd=%d, ipv4oefd=%d, udpfd=%d, controlfd=%d, daefd=%d, nlfd=%d , udplacfd=%d, pppoefd=%d, pppoesessfd=%d\n",
+		clifd, cluster_sockfd, tunfd, ipv4oefd, udpfd[0], controlfd, daefd, nlfd, udplacfd, pppoediscfd, pppoesessfd);
 
 	/* setup our fds to poll for input */
 	{
@@ -4178,6 +4213,10 @@ static void mainloop(void)
 		d[i].type = FD_TYPE_TUN;
 		e.data.ptr = &d[i++];
 		epoll_ctl(epollfd, EPOLL_CTL_ADD, tunfd, &e);
+
+		d[i].type = FD_TYPE_IPV4OE;
+		e.data.ptr = &d[i++];
+		epoll_ctl(epollfd, EPOLL_CTL_ADD, ipv4oefd, &e);
 
 		d[i].type = FD_TYPE_CONTROL;
 		e.data.ptr = &d[i++];
@@ -4271,9 +4310,11 @@ static void mainloop(void)
 			int pppoesess_ready = 0;
 			int pppoesess_pkts = 0;
 			int tun_ready = 0;
+			int ipv4oe_ready = 0;
 			int cluster_ready = 0;
 			int udp_pkts[MAX_UDPFD + 1] = INIT_TABUDPVAR;
 			int tun_pkts = 0;
+			int ethip_pkts = 0;
 			int cluster_pkts = 0;
 #ifdef BGP
 			uint32_t bgp_events[BGP_NUM_PEERS];
@@ -4306,6 +4347,7 @@ static void mainloop(void)
 				// these are handled below, with multiple interleaved reads
 				case FD_TYPE_CLUSTER:	cluster_ready++; break;
 				case FD_TYPE_TUN:	tun_ready++; break;
+				case FD_TYPE_IPV4OE:	ipv4oe_ready++; break;
 				case FD_TYPE_UDP:	udp_ready[d->index]++; break;
 				case FD_TYPE_PPPOESESS:	pppoesess_ready++; break;
 
@@ -4422,6 +4464,21 @@ static void mainloop(void)
 					}
 				}
 
+				// incoming IP
+				if (ipv4oe_ready)
+				{
+					if ((s = read(ipv4oefd, p, size_bufp)) > 0)
+					{
+						processethip(p, s);
+						ethip_pkts++;
+					}
+					else
+					{
+						ipv4oe_ready = 0;
+						n--;
+					}
+				}
+
 				// pppoe session
 				if (pppoesess_ready)
 				{
@@ -4454,13 +4511,13 @@ static void mainloop(void)
 				}
 			}
 
-			if (udp_pkts[0] > 1 || tun_pkts > 1 || cluster_pkts > 1)
+			if (udp_pkts[0] > 1 || tun_pkts > 1 || ethip_pkts > 1 || cluster_pkts > 1)
 				STAT(multi_read_used);
 
 			if (c >= config->multi_read_count)
 			{
-				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d cluster and %d pppoe packets\n",
-					config->multi_read_count, udp_pkts[0], tun_pkts, cluster_pkts, pppoesess_pkts);
+				LOG(3, 0, 0, "Reached multi_read_count (%d); processed %d udp, %d tun %d ethip %d cluster and %d pppoe packets\n",
+					config->multi_read_count, udp_pkts[0], tun_pkts, ethip_pkts, cluster_pkts, pppoesess_pkts);
 				STAT(multi_read_exceeded);
 				more++;
 			}
@@ -5294,8 +5351,14 @@ int main(int argc, char *argv[])
 	if (cluster_init() < 0)
 		exit(1);
 
-	inittun();
-	LOG(1, 0, 0, "Set up on interface %s\n", config->tundevicename);
+	if (*config->ipoedevicename)
+	{
+		init_ipoe();
+		LOG(1, 0, 0, "Set up on ipoe interface %s\n", config->ipoedevicename);
+	} else {
+		inittun();
+		LOG(1, 0, 0, "Set up on interface %s\n", config->tundevicename);
+	}
 
 	if (*config->pppoe_if_to_bind)
 	{

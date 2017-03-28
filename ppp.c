@@ -1122,6 +1122,14 @@ int join_bundle(sessionidt s)
 	// Search for a bundle to join
 	bundleidt i;
 	bundleidt b;
+
+	if (!session[s].opened || session[s].die)
+	{
+		LOG(3, s, session[s].tunnel, "Called join_bundle on an unopened/shutdown session.\n");
+		session[s].ip=0;	    // Make sure that any further shutdown does kill routes etc
+		return 0;                   // not a live session
+	}
+
 	for (i = 1; i < MAXBUNDLE; i++)
 	{
 		if (bundle[i].state != BUNDLEFREE)
@@ -1133,6 +1141,7 @@ int join_bundle(sessionidt s)
 				{
 					// uniformity of sequence number format must be insured
 					LOG(3, s, session[s].tunnel, "MPPP: unable to bundle session %d in bundle %d cause of different mssf\n", s, i);
+					LOG(0, s, session[s].tunnel, "MPPP: Mismatching mssf option with other sessions in bundle\n");
 					return -1;
 				}
 				session[s].bundle = i;
@@ -1154,7 +1163,7 @@ int join_bundle(sessionidt s)
 	}
 
 	// No previously created bundle was found for this session, so create a new one
-	if (!(b = new_bundle())) return 0;
+	if (!(b = new_bundle())) return -1;
 
 	session[s].bundle = b;
 	bundle[b].mrru = session[s].mrru;
@@ -1899,6 +1908,15 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		LOG(4, s, t, "MPPP: 24 bits sequence number:%d\n",seq_num);
 	}
 
+	if (seq_num==0 && this_fragmentation->start_seq!=0) {
+		/* The sequence number has been reset to zero,
+		 * remote must have started again - discard the entire
+		 * fragmentation buffer and start again
+		 */
+		LOG(2, s, t, "MPPP: Sequence number reset by remote\n");
+		memset(this_fragmentation, 0, sizeof(fragmentationt));
+	}
+
 	max_seq = this_bundle->max_seq;
 	maskSeq = max_seq - 1;
 
@@ -1979,8 +1997,25 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	// discard if frag_offset is bigger that the fragmentation buffer size
 	if (frag_offset >= MAXFRAGNUM)
 	{
-		// frag_offset is bigger that the fragmentation buffer size
+		/* frag_offset is bigger that the fragmentation buffer size
+		** more than likely one (or more) of the PPP links has died.
+		** Find the one with the lowest last_seq and terminate it.
+		*/
+		uint32_t min;
+		int lm;
+		min = sess_local[(this_bundle->members[0])].last_seq;
+		lm=0;
+		for (i = 1; i < this_bundle->num_of_links; i++)
+		{
+			uint32_t s_seq = sess_local[(this_bundle->members[i])].last_seq;
+			if (s_seq < min) {
+				min = s_seq;
+				lm=i;
+			}
+		}
+
 		LOG(3, s, t, "MPPP: Index out of range, seq:%d, begin_seq:%d\n", seq_num, this_fragmentation->start_seq);
+		sessionshutdown(this_bundle->members[lm], "MPPP: Link appears to have stopped", CDN_ADMIN_DISC, TERM_LOST_SERVICE);
 		return;
 	}
 

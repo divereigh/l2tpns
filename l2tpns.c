@@ -93,6 +93,7 @@ uint16_t MSS = 0;		// TCP MSS
 
 struct cli_session_actions *cli_session_actions = NULL;	// Pending session changes requested by CLI
 struct cli_tunnel_actions *cli_tunnel_actions = NULL;	// Pending tunnel changes required by CLI
+struct cli_bundle_actions *cli_bundle_actions = NULL;	// Pending tunnel changes required by CLI
 
 union iphash {
 	sessionidt sess;
@@ -2163,72 +2164,79 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 
 		if (b)
 		{
-			// This session was part of a bundle
-			bundle[b].num_of_links--;
-			LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d\n",s,b);
-			if(bundle[b].num_of_links == 0)
+			uint8_t mem_num = 0;
+			uint8_t ml;
+			// Find out which member number we are
+			for(ml = 0; ml<bundle[b].num_of_links; ml++)
 			{
-				bundleclear(b);
-				LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaing member links)\n",b);
-			}
-			else 
-			{
-				// Adjust the members array to accomodate the new change
-				uint8_t mem_num = 0;
-				// It should be here num_of_links instead of num_of_links-1 (previous instruction "num_of_links--")
-				if(bundle[b].members[bundle[b].num_of_links] != s)
+				if(bundle[b].members[ml] == s)
 				{
-					uint8_t ml;
-					for(ml = 0; ml<bundle[b].num_of_links; ml++)
-					if(bundle[b].members[ml] == s)
-					{
-							mem_num = ml;
-							break;
-					}
-					bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
-					LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
-
-					// If the killed session is the first of the bundle,
-					// the new first session must be stored in the cache_ipmap
-					// else the function sessionbyip return 0 and the sending not work any more (processipout).
-					if (mem_num == 0)
-					{
-						sessionidt new_s = bundle[b].members[0];
-
-						routed = 0;
-						// Add the route for this session.
-						for (r = 0; r < MAXROUTE && session[new_s].route[r].ip; r++)
-						{
-							int i, prefixlen;
-							in_addr_t ip;
-
-							prefixlen = session[new_s].route[r].prefixlen;
-							ip = session[new_s].route[r].ip;
-
-							if (!prefixlen) prefixlen = 32;
-							ip &= 0xffffffff << (32 - prefixlen);	// Force the ip to be the first one in the route.
-
-							for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
-								cache_ipmap(i, new_s);
-						}
-						cache_ipmap(session[new_s].ip, new_s);
-
-						// IPV6 route
-						for (r = 0; r < MAXROUTE6 && session[new_s].route6[r].ipv6prefixlen; r++)
-						{
-							cache_ipv6map(session[new_s].route6[r].ipv6route, session[new_s].route6[r].ipv6prefixlen, new_s);
-						}
-
-						if (session[new_s].ipv6address.s6_addr[0])
-						{
-							cache_ipv6map(session[new_s].ipv6address, 128, new_s);
-						}
-					}
+					mem_num = ml;
+					break;
 				}
 			}
 
-			cluster_send_bundle(b);
-        }
+			// Only do this if we are actually in the bundle
+			if (ml < bundle[b].num_of_links) {
+				// This session was part of a bundle
+				bundle[b].num_of_links--;
+				LOG(3, s, session[s].tunnel, "MPPP: Dropping member link: %d from bundle %d (remaining links: %d)\n",s,b,bundle[b].num_of_links);
+				if(bundle[b].num_of_links == 0)
+				{
+					bundleclear(b);
+					LOG(3, s, session[s].tunnel, "MPPP: Kill bundle: %d (No remaining member links)\n",b);
+				}
+				else 
+				{
+					// Adjust the members array to accomodate the new change
+					// It should be here num_of_links instead of num_of_links-1 (previous instruction "num_of_links--")
+					if(bundle[b].members[bundle[b].num_of_links] != s)
+					{
+						bundle[b].members[mem_num] = bundle[b].members[bundle[b].num_of_links];
+						LOG(3, s, session[s].tunnel, "MPPP: Adjusted member links array\n");
+
+						// If the killed session is the first of the bundle,
+						// the new first session must be stored in the cache_ipmap
+						// else the function sessionbyip return 0 and the sending not work any more (processipout).
+						if (mem_num == 0)
+						{
+							sessionidt new_s = bundle[b].members[0];
+
+							routed = 0;
+							// Add the route for this session.
+							for (r = 0; r < MAXROUTE && session[new_s].route[r].ip; r++)
+							{
+								int i, prefixlen;
+								in_addr_t ip;
+
+								prefixlen = session[new_s].route[r].prefixlen;
+								ip = session[new_s].route[r].ip;
+
+								if (!prefixlen) prefixlen = 32;
+								ip &= 0xffffffff << (32 - prefixlen);	// Force the ip to be the first one in the route.
+
+								for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
+									cache_ipmap(i, new_s);
+							}
+							cache_ipmap(session[new_s].ip, new_s);
+
+							// IPV6 route
+							for (r = 0; r < MAXROUTE6 && session[new_s].route6[r].ipv6prefixlen; r++)
+							{
+								cache_ipv6map(session[new_s].route6[r].ipv6route, session[new_s].route6[r].ipv6prefixlen, new_s);
+							}
+
+							if (session[new_s].ipv6address.s6_addr[0])
+							{
+								cache_ipv6map(session[new_s].ipv6address, 128, new_s);
+							}
+						}
+					}
+				}
+
+				cluster_send_bundle(b);
+			}
+        	}
 	}
 
 	if (session[s].throttle_in || session[s].throttle_out) // Unthrottle if throttled.
@@ -2418,6 +2426,29 @@ static void tunnelkill(tunnelidt t, char *reason)
 	LOG(1, 0, t, "Kill tunnel %u: %s\n", t, reason);
 	cli_tunnel_actions[t].action = 0;
 	cluster_send_tunnel(t);
+}
+
+// kill a bundle now
+static void bundlekill(bundleidt b, char *reason)
+{
+
+	CSTAT(bundlekill);
+
+	// kill sessions
+	for (int i = 0; i < bundle[b].num_of_links ; ++i)
+		sessionkill(bundle[b].members[i], reason);
+
+	// free bundle
+	bundleclear(b);
+	LOG(1, 0, 0, "Kill bundle %u: %s\n", b, reason);
+	cli_bundle_actions[b].action = 0;
+}
+
+// shut down a bundle cleanly (just a kill for the moment)
+static void bundleshutdown(bundleidt b, char *reason, int result, int error, char *msg)
+{
+	CSTAT(bundleshutdown);
+	bundlekill(b, reason);
 }
 
 // shut down a tunnel cleanly
@@ -3519,7 +3550,7 @@ static void processtun(uint8_t * buf, int len)
 }
 
 // Handle retries, timeouts.  Runs every 1/10th sec, want to ensure
-// that we look at the whole of the tunnel, radius and session tables
+// that we look at the whole of the tunnel, radius, bundle and session tables
 // every second
 static void regular_cleanups(double period)
 {
@@ -3527,14 +3558,17 @@ static void regular_cleanups(double period)
 	static tunnelidt t = 0;
 	static int r = 0;
 	static sessionidt s = 0;
+	static bundleidt b = 0;
 
 	int t_actions = 0;
 	int r_actions = 0;
 	int s_actions = 0;
+	int b_actions = 0;
 
 	int t_slice;
 	int r_slice;
 	int s_slice;
+	int b_slice;
 
 	int i;
 	int a;
@@ -3543,6 +3577,7 @@ static void regular_cleanups(double period)
 	t_slice = config->cluster_highest_tunnelid  * period;
 	r_slice = (MAXRADIUS - 1)                   * period;
 	s_slice = config->cluster_highest_sessionid * period;
+	b_slice = config->cluster_highest_bundleid * period;
 
 	if (t_slice < 1)
 	    t_slice = 1;
@@ -3559,7 +3594,12 @@ static void regular_cleanups(double period)
 	else if (s_slice > config->cluster_highest_sessionid)
 	    s_slice = config->cluster_highest_sessionid;
 
-	LOG(4, 0, 0, "Begin regular cleanup (last %f seconds ago)\n", period);
+	if (b_slice < 1)
+	    b_slice = 1;
+	else if (b_slice > config->cluster_highest_bundleid)
+	    b_slice = config->cluster_highest_bundleid;
+
+	LOG(5, 0, 0, "Begin regular cleanup (last %f seconds ago)\n", period);
 
 	for (i = 0; i < t_slice; i++)
 	{
@@ -3784,7 +3824,7 @@ static void regular_cleanups(double period)
 		if (session[s].ppp.phase >= Establish &&
                     ((!config->ppp_keepalive) ||
                      (time_now - session[s].last_packet >= config->echo_timeout)) &&
-		    (time_now - sess_local[s].last_echo >= ECHO_TIMEOUT))
+		    (time_now - sess_local[s].last_echo >= config->echo_timeout))
 		{
 			uint8_t b[MAXETHER];
 
@@ -3839,6 +3879,14 @@ static void regular_cleanups(double period)
 		{
 			sessionshutdown(s, "Idle Timeout Reached", CDN_ADMIN_DISC, TERM_IDLE_TIMEOUT);
 			STAT(session_timeout);
+			s_actions++;
+			continue;
+		}
+
+		// Drop sessions that have the state of Closing
+		if (session[s].ppp.lcp == Closing)
+		{
+			sessionshutdown(s, "Kill closing session", CDN_ADMIN_DISC, TERM_USER_REQUEST);
 			s_actions++;
 			continue;
 		}
@@ -3941,8 +3989,31 @@ static void regular_cleanups(double period)
 		}
 	}
 
-	LOG(4, 0, 0, "End regular cleanup: checked %d/%d/%d tunnels/radius/sessions; %d/%d/%d actions\n",
-		t_slice, r_slice, s_slice, t_actions, r_actions, s_actions);
+	for (i = 0; i < b_slice; i++)
+	{
+		b++;
+		if (b > config->cluster_highest_bundleid)
+			b = 1;
+
+		if (bundle[b].state!=BUNDLEOPEN) // Bundle isn't in use
+			continue;
+
+		// Check for bundle changes requested from the CLI
+		if ((a = cli_bundle_actions[b].action))
+		{
+			cli_bundle_actions[b].action = 0;
+			if (a & CLI_BUNDLE_KILL)
+			{
+				LOG(2, 0, 0, "Dropping bundle by CLI\n");
+				bundleshutdown(b, "Requested by administrator", 1, 0, 0);
+				b_actions++;
+			}
+		}
+	}
+
+
+	LOG(5, 0, 0, "End regular cleanup: checked %d/%d/%d/%d tunnels/radius/sessions/bundles; %d/%d/%d/%d actions\n",
+		t_slice, r_slice, s_slice, b_slice, t_actions, r_actions, s_actions, b_actions);
 }
 
 //
@@ -4682,6 +4753,13 @@ static void initdata(int optdebug, char *optconfig)
 		exit(1);
 	}
 	memset(cli_tunnel_actions, 0, sizeof(struct cli_tunnel_actions) * MAXSESSION);
+
+	if (!(cli_bundle_actions = shared_malloc(sizeof(struct cli_bundle_actions) * MAXBUNDLE)))
+	{
+		LOG(0, 0, 0, "Error doing malloc for cli bundle actions: %s\n", strerror(errno));
+		exit(1);
+	}
+	memset(cli_bundle_actions, 0, sizeof(struct cli_bundle_actions) * MAXBUNDLE);
 
 	memset(tunnel, 0, sizeof(tunnelt) * MAXTUNNEL);
 	memset(bundle, 0, sizeof(bundlet) * MAXBUNDLE);
@@ -5711,8 +5789,8 @@ int sessionsetup(sessionidt s, tunnelidt t)
 			cluster_send_bundle(session[s].bundle);
 		else
 		{
-			LOG(0, s, t, "MPPP: Mismaching mssf option with other sessions in bundle\n");
-			sessionshutdown(s, "Mismaching mssf option.", CDN_NONE, TERM_SERVICE_UNAVAILABLE);
+			LOG(0, s, t, "MPPP: Unable to join bundle\n");
+			sessionshutdown(s, "Unable to join bundle", CDN_NONE, TERM_SERVICE_UNAVAILABLE);
 			return 0;
 		}
 	}

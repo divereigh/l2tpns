@@ -248,6 +248,12 @@ struct cli_tunnel_actions {
 
 #define CLI_TUN_KILL		0x01
 
+struct cli_bundle_actions {
+	char action;
+};
+
+#define CLI_BUNDLE_KILL		0x01
+
 // structures
 typedef struct			// route
 {
@@ -620,6 +626,8 @@ struct Tstats
     uint32_t	call_sessionshutdown;
     uint32_t	call_tunnelkill;
     uint32_t	call_tunnelshutdown;
+    uint32_t	call_bundlekill;
+    uint32_t	call_bundleshutdown;
     uint32_t	call_assign_ip_address;
     uint32_t	call_free_ip_address;
     uint32_t	call_dump_acct_info;

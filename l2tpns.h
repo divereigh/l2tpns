@@ -241,6 +241,7 @@ struct cli_session_actions {
 #define CLI_SESS_NOTHROTTLE	0x10
 #define CLI_SESS_FILTER		0x20
 #define CLI_SESS_NOFILTER	0x40
+#define CLI_SESS_SINK		0x80
 
 struct cli_tunnel_actions {
 	char action;
@@ -453,6 +454,7 @@ typedef struct
 #define SESSION_PFC	(1 << 0)	// use Protocol-Field-Compression
 #define SESSION_ACFC	(1 << 1)	// use Address-and-Control-Field-Compression
 #define SESSION_STARTED	(1 << 2)	// RADIUS Start record sent
+#define SESSION_SINK	(1 << 3)	// Absorb all data in and out of a session (testing)
 
 // 328 bytes per tunnel
 typedef struct

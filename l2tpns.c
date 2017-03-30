@@ -3343,7 +3343,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 			LOG(4, s, t, "   Got a ZLB ack\n");
 		}
 	}
-	else
+	else if ((session[s].flags & SESSION_SINK)==0)
 	{                          // data
 		uint16_t proto;
 
@@ -3518,7 +3518,10 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 			LOG(2, s, t, "Unknown PPP protocol 0x%04X received in LCP %s state\n",
 				proto, ppp_state(session[s].ppp.lcp));
 		}
+	} else {
+		LOG(3, s, t, "Discard incoming session data\n");
 	}
+
 }
 
 // read and process packet on tun
@@ -3903,6 +3906,14 @@ static void regular_cleanups(double period)
 				sessionshutdown(s, "Requested by administrator.", CDN_ADMIN_DISC, TERM_ADMIN_RESET);
 				a = 0; // dead, no need to check for other actions
 				s_actions++;
+			}
+
+			if (a & CLI_SESS_SINK)
+			{
+				LOG(2, s, session[s].tunnel, "Sinking session by CLI\n");
+				session[s].flags |= SESSION_SINK;
+				s_actions++;
+				send++;
 			}
 
 			if (a & CLI_SESS_NOSNOOP)

@@ -200,6 +200,7 @@ config_descriptt config_values[] = {
 	CONFIG("primary_ipv6_dns", default_ipv6_dns1, IPv6),
 	CONFIG("secondary_ipv6_dns", default_ipv6_dns2, IPv6),
 	CONFIG("default_ipv6_domain_list", default_ipv6_domain_list, STRING),
+	CONFIG("lqr_interval", lqr_interval, INT),
 	{ NULL, 0, 0, 0 }
 };
 

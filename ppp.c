@@ -1109,7 +1109,8 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	}
 	else if (*p == EchoReply)
 	{
-		// Ignore it, last_packet time is set earlier than this.
+		// Set last_echo_reply time
+		sess_local[s].last_echo_reply=time_now;
 	}
 	else if (*p != CodeRej)
 	{

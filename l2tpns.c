@@ -1609,7 +1609,8 @@ void processipout(uint8_t *buf, int len)
 		for (i = 0;i < num_of_links;i++)
 		{
 			s = b->members[i];
-			if (session[s].ppp.lcp == Opened)
+			// Only include sessions where we have received a echo reply in the last 2 secs
+			if (session[s].ppp.lcp == Opened && (sess_local[s].last_echo-sess_local[s].last_echo_reply < 2))
 			{
 				members[nb_opened] = s;
 				nb_opened++;
@@ -3820,11 +3821,14 @@ static void regular_cleanups(double period)
 			continue;
 		}
 
+		/* If in a bundle set the echo_timeout to 1 sec */
+		int echo_timeout=(session[s].bundle==0) ? config->echo_timeout : 1;
+
 		// No data in ECHO_TIMEOUT seconds, send LCP ECHO
 		if (session[s].ppp.phase >= Establish &&
                     ((!config->ppp_keepalive) ||
-                     (time_now - session[s].last_packet >= config->echo_timeout)) &&
-		    (time_now - sess_local[s].last_echo >= config->echo_timeout))
+                     (time_now - session[s].last_packet >= echo_timeout)) &&
+		    (time_now - sess_local[s].last_echo >= echo_timeout))
 		{
 			uint8_t b[MAXETHER];
 

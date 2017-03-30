@@ -439,6 +439,8 @@ typedef struct
 
 	// last LCP Echo
 	time_t last_echo;
+	// Last LCP Echo Reply Received
+	time_t last_echo_reply;
 
 	// Last Multilink frame sequence number received
 	uint32_t last_seq;

@@ -2604,6 +2604,12 @@ uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelid
 	uint16_t type = mtype;
 	uint8_t *start = b;
 
+	/* Do not send any data for sink'ed sessions */
+	if (session[s].flags & SESSION_SINK) {
+		LOG(3, s, t, "Discard outgoing session data\n");
+		return(NULL);
+	}
+
 	if (t == TUNNEL_ID_PPPOE)
 	{
 		return pppoe_makeppp(b, size, p, l, s, t, mtype, prio, bid, mp_bits);
@@ -2697,6 +2703,12 @@ uint8_t *opt_makeppp(uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtyp
 	uint16_t hdr = 0x0002; // L2TP with no options
 	uint16_t type = mtype;
 	uint8_t *b = p;
+
+	/* Do not send any data for sink'ed sessions */
+	if (session[s].flags & SESSION_SINK) {
+		LOG(3, s, t, "Discard outgoing session data\n");
+		return(NULL);
+	}
 
 	if (t == TUNNEL_ID_PPPOE)
 	{

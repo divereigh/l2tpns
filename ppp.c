@@ -1110,6 +1110,7 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	else if (*p == EchoReply)
 	{
 		// Set last_echo_reply time
+		LOG(5, s, t, "Set last_echo_reply=%ld\n", time_now);
 		sess_local[s].last_echo_reply=time_now;
 	}
 	else if (*p != CodeRej)

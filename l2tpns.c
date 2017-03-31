@@ -1610,10 +1610,16 @@ void processipout(uint8_t *buf, int len)
 		{
 			s = b->members[i];
 			// Only include sessions where we have received a echo reply in the last 2 secs
-			if (session[s].ppp.lcp == Opened && (sess_local[s].last_echo-sess_local[s].last_echo_reply < 2))
+			// if (session[s].ppp.lcp == Opened && (sess_local[s].last_echo-sess_local[s].last_echo_reply < 2))
+			if (session[s].ppp.lcp == Opened)
 			{
-				members[nb_opened] = s;
-				nb_opened++;
+				LOG(4, s, t, "MPPP: last_echo=%ld, last_echo_reply=%ld\n", sess_local[s].last_echo, sess_local[s].last_echo_reply);
+				if (sess_local[s].last_echo-sess_local[s].last_echo_reply < 2) {
+					members[nb_opened] = s;
+					nb_opened++;
+				} else {
+					LOG(4, s, t, "MPPP: Not using bundle member (not repsonding)\n");
+				}
 			}
 		}
 

@@ -2605,7 +2605,7 @@ uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelid
 
 	/* Do not send any data for sink'ed sessions */
 	if (session[s].flags & SESSION_SINK) {
-		LOG(3, s, t, "Discard outgoing session data\n");
+		LOG(3, s, t, "Discard outgoing session data (data sink)\n");
 		return(NULL);
 	}
 

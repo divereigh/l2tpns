@@ -3526,7 +3526,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 				proto, ppp_state(session[s].ppp.lcp));
 		}
 	} else {
-		LOG(3, s, t, "Discard incoming session data\n");
+		LOG(3, s, t, "Discard incoming session data (data sink)\n");
 	}
 
 }

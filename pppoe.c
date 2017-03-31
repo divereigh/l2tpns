@@ -684,13 +684,14 @@ static void pppoe_recv_PADT(uint8_t *pack)
 
 	if (hdr->sid)
 	{
-		if ((hdr->sid < MAXSESSION) && (session[hdr->sid].tunnel == TUNNEL_ID_PPPOE))
+		if ((hdr->sid < MAXSESSION) && (session[hdr->sid].tunnel == TUNNEL_ID_PPPOE)) {
 			/* ignore it if the session it set to SINK all traffic */
 			if ((session[hdr->sid].flags & SESSION_SINK)==0) {
 				sessionshutdown(hdr->sid, "Client shutdown", CDN_ADMIN_DISC, 0);
 			} else {
-				LOG(3, s, t, "Discard incoming PADT (data sink)\n");
+				LOG(3, hdr->sid, TUNNEL_ID_PPPOE, "Discard incoming PADT (data sink)\n");
 			}
+		}
 	}
 }
 
@@ -1113,8 +1114,8 @@ void process_pppoe_sess(uint8_t *pack, int size)
 	}
 
 	/* ignore it if the session it set to SINK all traffic */
-	if (session[hdr->sid].flags & SESSION_SINK) {
-		LOG(3, s, t, "Discard incoming pppoe session data (data sink)\n");
+	if (session[sid].flags & SESSION_SINK) {
+		LOG(3, sid, t, "Discard incoming pppoe session data (data sink)\n");
 		return;
 	}
 

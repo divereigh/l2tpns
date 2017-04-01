@@ -1618,7 +1618,7 @@ void processipout(uint8_t *buf, int len)
 					members[nb_opened] = s;
 					nb_opened++;
 				} else {
-					LOG(4, s, t, "MPPP: Not using bundle member (not repsonding)\n");
+					LOG(4, s, t, "MPPP: Not using bundle member (not responding)\n");
 				}
 			}
 		}
@@ -3833,14 +3833,18 @@ static void regular_cleanups(double period)
 		/* If in a bundle set the echo_timeout to 1 sec */
 		int echo_timeout=(session[s].bundle==0) ? config->echo_timeout : 1;
 
+		LOG(5, s, t, "bundle=%d, last_echo=%ld, time_now=%ld\n", session[s].bundle, sess_local[s].last_echo, time_now);
 		// No data in ECHO_TIMEOUT seconds, send LCP ECHO
 		if (session[s].ppp.phase >= Establish &&
-                    ((!config->ppp_keepalive) ||
+                    ((!config->ppp_keepalive) || session[s].bundle ||
                      (time_now - session[s].last_packet >= echo_timeout)) &&
 		    (time_now - sess_local[s].last_echo >= echo_timeout))
 		{
 			uint8_t b[MAXETHER];
 
+			if (session[s].flags & SESSION_SINK) {
+				sess_local[s].last_echo = time_now;
+			}
 			uint8_t *q = makeppp(b, sizeof(b), 0, 0, s, session[s].tunnel, PPPLCP, 1, 0, 0);
 			if (!q) continue;
 

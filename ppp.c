@@ -1953,17 +1953,30 @@ void processmpin(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 
 	if (seq_num < this_fragmentation->M)
 	{
+		LOG(4, s, t, "MPPP: Not checking bundles: seq_num=%d, this_fragmentation->M=%d\n", seq_num, this_fragmentation->M);
 		Mmin = seq_num;
 		this_fragmentation->M = seq_num;
 	}
 	else
 	{
-		Mmin = sess_local[(this_bundle->members[0])].last_seq;
-		for (i = 1; i < this_bundle->num_of_links; i++)
-		{
-			uint32_t s_seq = sess_local[(this_bundle->members[i])].last_seq;
-			if (s_seq < Mmin)
-				Mmin = s_seq;
+		int first=1;
+		Mmin = 0; // Stop the compiler bitching about initialised variables
+		/* Look for bundle members that are responding */
+		for (i = 0; i < this_bundle->num_of_links; i++) {
+			if(sess_local[s].last_echo-sess_local[s].last_echo_reply < 2) {
+				if (first) {
+					Mmin = sess_local[(this_bundle->members[i])].last_seq;
+					first=0;
+				} else {
+					uint32_t s_seq = sess_local[(this_bundle->members[i])].last_seq;
+					if (s_seq < Mmin) 
+						Mmin = s_seq;
+				}
+			}
+		}
+		if (first) {
+			LOG(2, s, t, "MPPP: No responding bundles!\n");
+			return;
 		}
 		this_fragmentation->M = Mmin;
 	}
@@ -2095,6 +2108,7 @@ find_frame:
 	// Try to find a Begin sequence from the start_seq sequence to M sequence
 	while (b_seq < Mmin)
 	{
+		LOG(4, s, t, "MPPP: Looking for a Begin packet: b_seq=%d, Mmin=%d\n", b_seq, Mmin);
 		if (this_fragmentation->fragment[begin_index].length)
 		{
 			if (b_seq == this_fragmentation->fragment[begin_index].seq)

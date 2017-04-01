@@ -126,7 +126,7 @@ void processpap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		p[1] = id;
 		*(uint16_t *) (p + 2) = htons(5);	// length
 		p[4] = 0;				// no message
-		tunnelsend(b, 5 + (p - b), t);		// send it
+		tunnelsend(b, 5 + (p - b), s, t);		// send it
 
 		if (session[s].ip)
 		{
@@ -524,7 +524,7 @@ static void ppp_code_rej(sessionidt s, tunnelidt t, uint16_t proto,
 	LOG(3, s, t, "%s: send %s\n", pname, ppp_code(*q));
 	if (config->debug > 3) dumplcp(q, l);
 
-	tunnelsend(buf, l + (q - buf), t);
+	tunnelsend(buf, l + (q - buf), s, t);
 }
 
 // Process LCP messages
@@ -851,7 +851,7 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		LOG(3, s, t, "LCP: send %s\n", ppp_code(*response));
 		if (config->debug > 3) dumplcp(response, l);
 
-		tunnelsend(b, l + (response - b), t);
+		tunnelsend(b, l + (response - b), s, t);
 	}
 	else if (*p == ConfigNak || *p == ConfigRej)
 	{
@@ -1010,7 +1010,7 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 				LOG(3, s, t, "LCP: send %s\n", ppp_code(*response));
 				if (config->debug > 3) dumplcp(response, l);
 
-				tunnelsend(b, l + (response - b), t);
+				tunnelsend(b, l + (response - b), s, t);
 			}
 			break;
 
@@ -1066,7 +1066,7 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		LOG(3, s, t, "LCP: send %s\n", ppp_code(*q));
 		if (config->debug > 3) dumplcp(q, l);
 
-		tunnelsend(b, l + (q - b), t); // send it
+		tunnelsend(b, l + (q - b), s, t); // send it
 	}
 	else if (*p == ProtocolRej)
 	{
@@ -1102,7 +1102,7 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		LOG(4, s, t, "LCP: send %s\n", ppp_code(*q));
 		if (config->debug > 3) dumplcp(q, l);
 
-		tunnelsend(b, l + (q - b), t); // send it
+		tunnelsend(b, l + (q - b), s, t); // send it
 
 		if (session[s].ppp.phase == Network && session[s].ppp.ipv6cp == Opened)
 			send_ipv6_ra(s, t, NULL); // send a RA
@@ -1451,7 +1451,7 @@ void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		}
 
 		LOG(3, s, t, "IPCP: send %s\n", ppp_code(*response));
-		tunnelsend(b, l + (response - b), t);
+		tunnelsend(b, l + (response - b), s, t);
 	}
 	else if (*p == TerminateReq)
 	{
@@ -1481,7 +1481,7 @@ void processipcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		if (!q) return;
 
 		LOG(3, s, t, "IPCP: send %s\n", ppp_code(*q));
-		tunnelsend(b, l + (q - b), t); // send it
+		tunnelsend(b, l + (q - b), s, t); // send it
 	}
 	else if (*p != CodeRej)
 	{
@@ -1690,7 +1690,7 @@ void processipv6cp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		}
 
 		LOG(3, s, t, "IPV6CP: send %s\n", ppp_code(*response));
-		tunnelsend(b, l + (response - b), t);
+		tunnelsend(b, l + (response - b), s, t);
 	}
 	else if (*p == TerminateReq)
 	{
@@ -1720,7 +1720,7 @@ void processipv6cp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		if (!q) return;
 
 		LOG(3, s, t, "IPV6CP: send %s\n", ppp_code(*q));
-		tunnelsend(b, l + (q - b), t); // send it
+		tunnelsend(b, l + (q - b), s, t); // send it
 	}
 	else if (*p != CodeRej)
 	{
@@ -2534,7 +2534,7 @@ void processccp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		}
 
 		LOG(4, s, t, "CCP: send %s\n", ppp_code(*q));
-		tunnelsend(b, l + (q - b), t);
+		tunnelsend(b, l + (q - b), s, t);
 	}
 	else if (*p == TerminateReq)
 	{
@@ -2542,7 +2542,7 @@ void processccp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 		q = makeppp(b, sizeof(b),  p, l, s, t, PPPCCP, 0, 0, 0);
 		if (!q) return;
 		LOG(3, s, t, "CCP: send %s\n", ppp_code(*q));
-		tunnelsend(b, l + (q - b), t);
+		tunnelsend(b, l + (q - b), s, t);
 		change_state(s, ccp, Stopped);
 	}
 	else if (*p != CodeRej)
@@ -2592,7 +2592,7 @@ void sendchap(sessionidt s, tunnelidt t)
 	memcpy(q + 5, radius[r].auth, 16);	// challenge
 	strcpy((char *) q + 21, config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname);	// our name
 	*(uint16_t *) (q + 2) = htons(strlen(config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname) + 21); // length
-	tunnelsend(b, strlen(config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname) + 21 + (q - b), t); // send it
+	tunnelsend(b, strlen(config->multi_n_hostname[tunnel[t].indexudp][0]?config->multi_n_hostname[tunnel[t].indexudp]:hostname) + 21 + (q - b), s, t); // send it
 }
 
 // fill in a L2TP message with a PPP frame,
@@ -2602,12 +2602,6 @@ uint8_t *makeppp(uint8_t *b, int size, uint8_t *p, int l, sessionidt s, tunnelid
 	uint16_t hdr = 0x0002; // L2TP with no options
 	uint16_t type = mtype;
 	uint8_t *start = b;
-
-	/* Do not send any data for sink'ed sessions */
-	if (session[s].flags & SESSION_SINK) {
-		LOG(3, s, t, "Discard outgoing session data (data sink)\n");
-		return(NULL);
-	}
 
 	if (t == TUNNEL_ID_PPPOE)
 	{
@@ -2702,12 +2696,6 @@ uint8_t *opt_makeppp(uint8_t *p, int l, sessionidt s, tunnelidt t, uint16_t mtyp
 	uint16_t hdr = 0x0002; // L2TP with no options
 	uint16_t type = mtype;
 	uint8_t *b = p;
-
-	/* Do not send any data for sink'ed sessions */
-	if (session[s].flags & SESSION_SINK) {
-		LOG(3, s, t, "Discard outgoing session data\n");
-		return(NULL);
-	}
 
 	if (t == TUNNEL_ID_PPPOE)
 	{
@@ -2860,7 +2848,7 @@ void sendlcp(sessionidt s, tunnelidt t)
 	LOG_HEX(5, "PPPLCP", q, l - q);
 	if (config->debug > 3) dumplcp(q, l - q);
 
-	tunnelsend(b, (l - b), t);
+	tunnelsend(b, (l - b), s, t);
 	restart_timer(s, lcp);
 }
 
@@ -2879,7 +2867,7 @@ void sendccp(sessionidt s, tunnelidt t)
 	*(uint16_t *)(q + 2) = htons(4); // Length
 
 	LOG_HEX(5, "PPPCCP", q, 4);
-	tunnelsend(b, (q - b) + 4 , t);
+	tunnelsend(b, (q - b) + 4 , s, t);
 	restart_timer(s, ccp);
 }
 
@@ -2910,5 +2898,5 @@ void protoreject(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l, uint16_t pro
 	else
 		LOG(2, s, t, "LCP: sent ProtocolRej (0x%04X: unsupported)\n", proto);
 
-	tunnelsend(buf, l + (q - buf), t);
+	tunnelsend(buf, l + (q - buf), s, t);
 }

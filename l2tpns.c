@@ -1252,7 +1252,7 @@ static sessionidt sessionidtbysessiont(sessiont *s)
 }
 
 // actually send a control message for a specific tunnel
-void tunnelsend(uint8_t * buf, uint16_t l, tunnelidt t)
+void tunnelsend(uint8_t * buf, uint16_t l, sessionidt s, tunnelidt t)
 {
 	struct sockaddr_in addr;
 
@@ -1262,6 +1262,12 @@ void tunnelsend(uint8_t * buf, uint16_t l, tunnelidt t)
 	{
 		LOG(0, 0, t, "tunnelsend called with 0 as tunnel id\n");
 		STAT(tunnel_tx_errors);
+		return;
+	}
+
+	/* Do not send any data for sink'ed sessions */
+	if (s && session[s].flags & SESSION_SINK) {
+		LOG(3, s, t, "Discard outgoing session data\n");
 		return;
 	}
 
@@ -1646,7 +1652,7 @@ void processipout(uint8_t *buf, int len)
 				// send the first packet
 				uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, fraglen, s, t, PPPIP, 0, bid, MP_BEGIN);
 				if (!p) return;
-				tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
+				tunnelsend(fragbuf, fraglen + (p-fragbuf), s, t); // send it...
 
 				// statistics
 				update_session_out_stat(s, sp, fraglen);
@@ -1661,7 +1667,7 @@ void processipout(uint8_t *buf, int len)
 					LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
 					p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), fraglen, s, t, PPPIP, 0, bid, 0);
 					if (!p) return;
-					tunnelsend(fragbuf, fraglen + (p-fragbuf), t); // send it...
+					tunnelsend(fragbuf, fraglen + (p-fragbuf), s, t); // send it...
 					update_session_out_stat(s, sp, fraglen);
 					remain -= fraglen;
 				}
@@ -1673,7 +1679,7 @@ void processipout(uint8_t *buf, int len)
 				LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
 				p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), remain, s, t, PPPIP, 0, bid, MP_END);
 				if (!p) return;
-				tunnelsend(fragbuf, remain + (p-fragbuf), t); // send it...
+				tunnelsend(fragbuf, remain + (p-fragbuf), s, t); // send it...
 				update_session_out_stat(s, sp, remain);
 				if (remain != last_fraglen)
 					LOG(3, s, t, "PROCESSIPOUT ERROR REMAIN != LAST_FRAGLEN, %d != %d\n", remain, last_fraglen);
@@ -1683,7 +1689,7 @@ void processipout(uint8_t *buf, int len)
 				// Send it as one frame
 				uint8_t *p = makeppp(fragbuf, sizeof(fragbuf), buf, len, s, t, PPPIP, 0, bid, MP_BOTH_BITS);
 				if (!p) return;
-				tunnelsend(fragbuf, len + (p-fragbuf), t); // send it...
+				tunnelsend(fragbuf, len + (p-fragbuf), s, t); // send it...
 				LOG(4, s, t, "MPPP: packet sent as one frame\n");
 				update_session_out_stat(s, sp, len);
 			}
@@ -1692,14 +1698,14 @@ void processipout(uint8_t *buf, int len)
 		{
 			// Send it as one frame (NO MPPP Frame)
 			uint8_t *p = opt_makeppp(buf, len, s, t, PPPIP, 0, 0, 0);
-			tunnelsend(p, len + (buf-p), t); // send it...
+			tunnelsend(p, len + (buf-p), s, t); // send it...
 			update_session_out_stat(s, sp, len);
 		}
 	}
 	else
 	{
 		uint8_t *p = opt_makeppp(buf, len, s, t, PPPIP, 0, 0, 0);
-		tunnelsend(p, len + (buf-p), t); // send it...
+		tunnelsend(p, len + (buf-p), s, t); // send it...
 		update_session_out_stat(s, sp, len);
 	}
 
@@ -1813,7 +1819,7 @@ static void processipv6out(uint8_t * buf, int len)
 	{
 		uint8_t *p = makeppp(b, sizeof(b), buf, len, s, t, PPPIPV6, 0, 0, 0);
 		if (!p) return;
-		tunnelsend(b, len + (p-b), t); // send it...
+		tunnelsend(b, len + (p-b), s, t); // send it...
 	}
 
 	// Snooping this session, send it to intercept box
@@ -1868,7 +1874,7 @@ static void send_ipout(sessionidt s, uint8_t *buf, int len)
 
 	if (!p) return;
 
-	tunnelsend(b, len + (p-b), t); // send it...
+	tunnelsend(b, len + (p-b), s, t); // send it...
 
 	// Snooping this session.
 	if (sp->snoop_ip && sp->snoop_port)
@@ -1966,7 +1972,7 @@ static void controlnull(tunnelidt t)
 	buf[3] = htons(0); // session
 	buf[4] = htons(tunnel[t].ns); // sequence
 	buf[5] = htons(tunnel[t].nr); // sequence
-	tunnelsend((uint8_t *)buf, 12, t);
+	tunnelsend((uint8_t *)buf, 12, 0, t);
 }
 
 // add a control message to a tunnel, and send if within window
@@ -1991,7 +1997,7 @@ static void controladd(controlt *c, sessionidt far, tunnelidt t)
 	if (tunnel[t].controlc <= tunnel[t].window)
 	{
 		tunnel[t].try = 0;      // first send
-		tunnelsend(c->buf, c->length, t);
+		tunnelsend(c->buf, c->length, 0, t);
 	}
 }
 
@@ -2307,7 +2313,7 @@ void sendipcp(sessionidt s, tunnelidt t)
 				 config->iftun_n_address[tunnel[t].indexudp] ? config->iftun_n_address[tunnel[t].indexudp] :
 				 my_address; // send my IP
 
-	tunnelsend(buf, 10 + (q - buf), t); // send it
+	tunnelsend(buf, 10 + (q - buf), s, t); // send it
 	restart_timer(s, ipcp);
 }
 
@@ -2333,7 +2339,7 @@ void sendipv6cp(sessionidt s, tunnelidt t)
 	*(uint32_t *) (q + 10) = 0;
 	q[13] = 1;
 
-	tunnelsend(buf, 14 + (q - buf), t);	// send it
+	tunnelsend(buf, 14 + (q - buf), s, t);	// send it
 	restart_timer(s, ipv6cp);
 }
 
@@ -2702,7 +2708,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 				while (c && tosend)
 				{
 					tunnel[t].try = 0; // first send
-					tunnelsend(c->buf, c->length, t);
+					tunnelsend(c->buf, c->length, 0, t);
 					c = c->next;
 					tosend--;
 				}
@@ -3635,7 +3641,7 @@ static void regular_cleanups(double period)
 				else
 					while (c && w--)
 					{
-						tunnelsend(c->buf, c->length, t);
+						tunnelsend(c->buf, c->length, 0, t);
 						c = c->next;
 					}
 
@@ -3842,7 +3848,7 @@ static void regular_cleanups(double period)
 			LOG(4, s, session[s].tunnel, "No data in %d seconds, sending LCP ECHO\n",
 					(int)(time_now - session[s].last_packet));
 
-			tunnelsend(b, (q - b) + 8, session[s].tunnel); // send it
+			tunnelsend(b, (q - b) + 8, s, session[s].tunnel); // send it
 			sess_local[s].last_echo = time_now;
 			s_actions++;
 		}

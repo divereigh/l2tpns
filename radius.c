@@ -972,7 +972,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				*p = (r_code == AccessAccept) ? 3 : 4;     // ack/nak
 				p[1] = radius[r].id;
 				*(uint16_t *) (p + 2) = ntohs(4); // no message
-				tunnelsend(b, (p - b) + 4, t); // send it
+				tunnelsend(b, (p - b) + 4, s, t); // send it
 
 				LOG(3, s, session[s].tunnel, "   CHAP User %s authentication %s.\n", session[s].user,
 						(r_code == AccessAccept) ? "allowed" : "denied");
@@ -988,7 +988,7 @@ void processrad(uint8_t *buf, int len, char socket_index)
 				p[1] = radius[r].id;
 				*(uint16_t *) (p + 2) = ntohs(5);
 				p[4] = 0; // no message
-				tunnelsend(b, (p - b) + 5, t); // send it
+				tunnelsend(b, (p - b) + 5, s, t); // send it
 
 				LOG(3, s, session[s].tunnel, "   PAP User %s authentication %s.\n", session[s].user,
 						(r_code == AccessAccept) ? "allowed" : "denied");

@@ -200,6 +200,6 @@ void send_ipv6_ra(sessionidt s, tunnelidt t, struct in6_addr *ip)
 	// Length + hearder length
 	l += sizeof(*p_ip6_hdr);
 
-	tunnelsend(b, l + (((uint8_t *) p_ip6_hdr)-b), t); // send it...
+	tunnelsend(b, l + (((uint8_t *) p_ip6_hdr)-b), s, t); // send it...
 	return;
 }

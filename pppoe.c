@@ -976,7 +976,7 @@ static void pppoe_forwardto_session_rmlns(uint8_t *pack, int size, sessionidt se
 	else
 		session[sess].last_packet = time_now;
 
-	tunnelsend(pl2tp, ll2tp, t); // send it...
+	tunnelsend(pl2tp, ll2tp, s, t); // send it...
 }
 
 // Forward from l2tp to pppoe
@@ -1047,7 +1047,7 @@ void pppoe_forwardto_session_pppoe(uint8_t *pack, int size, sessionidt sess, uin
 	else
 		session[sess].last_packet = time_now;
 
-	tunnelsend(p, lpppoe, t); // send it....
+	tunnelsend(p, lpppoe, s, t); // send it....
 }
 
 void process_pppoe_sess(uint8_t *pack, int size)

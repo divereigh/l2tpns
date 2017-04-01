@@ -977,7 +977,7 @@ void sessionkill(sessionidt s, char *reason);
 void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_error, int term_cause);
 void filter_session(sessionidt s, int filter_in, int filter_out);
 void send_garp(in_addr_t ip);
-void tunnelsend(uint8_t *buf, uint16_t l, tunnelidt t);
+void tunnelsend(uint8_t *buf, uint16_t l, sessionidt s, tunnelidt t);
 int tun_write(uint8_t *data, int size);
 void adjust_tcp_mss(sessionidt s, tunnelidt t, uint8_t *buf, int len, uint8_t *tcp);
 void sendipcp(sessionidt s, tunnelidt t);

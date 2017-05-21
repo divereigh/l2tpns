@@ -1508,9 +1508,9 @@ void processipout(uint8_t *buf, int len)
 	}
 
 	t = session[s].tunnel;
-	if (len > session[s].mru || (session[s].mrru && len > session[s].mrru))
+	if (len > session[s].mru && (session[s].mrru==0 || len > session[s].mrru))
 	{
-		LOG(3, s, t, "Packet size more than session MRU\n");
+		LOG(3, s, t, "Packet size more than session MRU/MRRU (len=%d, mru=%d, mrru=%d\n", len, session[s].mru, session[s].mrru);
 		return;
 	}
 

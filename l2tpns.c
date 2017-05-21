@@ -1516,7 +1516,7 @@ void processipout(uint8_t *buf, int len)
 	t = session[s].tunnel;
 	if (len > session[s].mru || (session[s].mrru && len > session[s].mrru))
 	{
-		LOG(3, s, t, "Packet size more than session MRU\n");
+		LOG(3, s, t, "Packet size more than session MRU/MRRU (len=%d, mru=%d, mrru=%d\n", len, session[s].mru, session[s].mrru);
 		return;
 	}
 
@@ -1620,7 +1620,7 @@ void processipout(uint8_t *buf, int len)
 			if (session[s].ppp.lcp == Opened)
 			{
 				LOG(4, s, t, "MPPP: last_echo=%ld, last_echo_reply=%ld\n", sess_local[s].last_echo, sess_local[s].last_echo_reply);
-				if (sess_local[s].last_echo-sess_local[s].last_echo_reply < 2) {
+				if (1 || sess_local[s].last_echo-sess_local[s].last_echo_reply < 2) {
 					members[nb_opened] = s;
 					nb_opened++;
 				} else {
@@ -1644,7 +1644,8 @@ void processipout(uint8_t *buf, int len)
 
 		if (num_of_links > 1)
 		{
-			if(len > MINFRAGLEN)
+			LOG(4, s, t, "MPPP: packet len=%d, mru=%d\n", len, session[s].mru);
+			if(len > session[s].mru)
 			{
 				//for rotate traffic among the member links
 				uint32_t divisor = num_of_links;
@@ -1683,7 +1684,7 @@ void processipout(uint8_t *buf, int len)
 				s = members[b->current_ses];
 				t = session[s].tunnel;
 				sp = &session[s];
-				LOG(4, s, t, "MPPP: (2)Session number becomes: %d\n", s);
+				LOG(4, s, t, "MPPP: (3)Session number becomes: %d\n", s);
 				p = makeppp(fragbuf, sizeof(fragbuf), buf+(len - remain), remain, s, t, PPPIP, 0, bid, MP_END);
 				if (!p) return;
 				tunnelsend(fragbuf, remain + (p-fragbuf), s, t); // send it...
@@ -1704,6 +1705,7 @@ void processipout(uint8_t *buf, int len)
 		else
 		{
 			// Send it as one frame (NO MPPP Frame)
+			LOG(4, s, t, "MPPP: packet sent without MPPP\n");
 			uint8_t *p = opt_makeppp(buf, len, s, t, PPPIP, 0, 0, 0);
 			tunnelsend(p, len + (buf-p), s, t); // send it...
 			update_session_out_stat(s, sp, len);
@@ -3838,6 +3840,7 @@ static void regular_cleanups(double period)
 
 		/* If in a bundle set the echo_timeout to 1 sec */
 		int echo_timeout=(session[s].bundle==0) ? config->echo_timeout : 1;
+		echo_timeout=config->echo_timeout;
 
 		LOG(5, s, t, "bundle=%d, last_echo=%ld, time_now=%ld\n", session[s].bundle, sess_local[s].last_echo, time_now);
 		// No data in ECHO_TIMEOUT seconds, send LCP ECHO

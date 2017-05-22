@@ -266,7 +266,7 @@ static void dhcp6_send_reply(sessionidt s, tunnelidt t, struct in6_addr *ip6_src
 	// Add ipv6 header to length
 	len += sizeof(*p_ip6_hdr);
 	LOG(3, s, t, "Send DHCPv6 message %s\n", (p_mess_hdr->type == DHCP6_REPLY) ? "REPLY" : "ADVERTISE");
-	tunnelsend(b, len + (((uint8_t *) p_ip6_hdr)-b), t); // send it...
+	tunnelsend(b, len + (((uint8_t *) p_ip6_hdr)-b), s, t); // send it...
 }
 
 static char * get_msg_type(uint8_t type)

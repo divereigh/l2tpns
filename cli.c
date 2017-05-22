@@ -92,6 +92,7 @@ static int cmd_drop_user(struct cli_def *cli, const char *command, char **argv, 
 static int cmd_drop_tunnel(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_drop_session(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_drop_bundle(struct cli_def *cli, const char *command, char **argv, int argc);
+static int cmd_sink_session(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_snoop(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_no_snoop(struct cli_def *cli, const char *command, char **argv, int argc);
 static int cmd_throttle(struct cli_def *cli, const char *command, char **argv, int argc);
@@ -222,6 +223,9 @@ void init_cli()
 	cli_register_command(cli, c, "tunnel", cmd_drop_tunnel, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Disconnect a tunnel and all sessions on that tunnel");
 	cli_register_command(cli, c, "session", cmd_drop_session, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Disconnect a session");
 	cli_register_command(cli, c, "bundle", cmd_drop_bundle, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Disconnect a bundle and all sessions in that bundle");
+
+	c = cli_register_command(cli, NULL, "sink", NULL, PRIVILEGE_PRIVILEGED, MODE_EXEC, NULL);
+	cli_register_command(cli, c, "session", cmd_sink_session, PRIVILEGE_PRIVILEGED, MODE_EXEC, "Force a session to sink packets - for testing");
 
 	c = cli_register_command(cli, NULL, "load", NULL, PRIVILEGE_PRIVILEGED, MODE_CONFIG, NULL);
 	cli_register_command(cli, c, "plugin", cmd_load_plugin, PRIVILEGE_PRIVILEGED, MODE_CONFIG, "Load a plugin");
@@ -906,6 +910,7 @@ static int cmd_show_counters(struct cli_def *cli, const char *command, char **ar
 	cli_print(cli, "%-30s%u", "call_sessionkill",		GET_STAT(call_sessionkill));
 	cli_print(cli, "%-30s%u", "call_sessionshutdown",	GET_STAT(call_sessionshutdown));
 	cli_print(cli, "%-30s%u", "call_sessionsetup",		GET_STAT(call_sessionsetup));
+	cli_print(cli, "%-30s%u", "call_sessionsink",		GET_STAT(call_sessionkill));
 	cli_print(cli, "%-30s%u", "call_assign_ip_address",	GET_STAT(call_assign_ip_address));
 	cli_print(cli, "%-30s%u", "call_free_ip_address",	GET_STAT(call_free_ip_address));
 	cli_print(cli, "%-30s%u", "call_dump_acct_info",	GET_STAT(call_dump_acct_info));
@@ -1437,6 +1442,56 @@ static int cmd_drop_session(struct cli_def *cli, const char *command, char **arg
 		{
 			cli_print(cli, "Dropping session %d", s);
 			cli_session_actions[s].action |= CLI_SESS_KILL;
+		}
+		else
+		{
+			cli_error(cli, "Session %d is not active.", s);
+		}
+	}
+
+	return CLI_OK;
+}
+
+static int cmd_sink_session(struct cli_def *cli, const char *command, char **argv, int argc)
+{
+	int i;
+	sessionidt s;
+
+	if (CLI_HELP_REQUESTED)
+		return cli_arg_help(cli, argc > 1,
+			"<1-%d>", MAXSESSION-1, "Session id to drop", NULL);
+
+	if (!config->cluster_iam_master)
+	{
+		cli_error(cli, "Can't do this on a slave.  Do it on %s",
+			fmtaddr(config->cluster_master_address, 0));
+
+		return CLI_OK;
+	}
+
+	if (!argc)
+	{
+		cli_error(cli, "Specify a session id to drop");
+		return CLI_OK;
+	}
+
+	for (i = 0; i < argc; i++)
+	{
+		if ((s = atol(argv[i])) <= 0 || (s > MAXSESSION))
+		{
+			cli_error(cli, "Invalid session ID (1-%d)", MAXSESSION-1);
+			continue;
+		}
+
+		if (session[s].ip && session[s].opened && !session[s].die)
+		{
+			cli_print(cli, "Sinking session %d", s);
+			cli_session_actions[s].action |= CLI_SESS_SINK;
+		}
+		else if (session[s].forwardtosession && session[s].opened && !session[s].die)
+		{
+			cli_print(cli, "Sinking session %d", s);
+			cli_session_actions[s].action |= CLI_SESS_SINK;
 		}
 		else
 		{

@@ -535,7 +535,7 @@ int lac_session_forward(uint8_t *buf, int len, sessionidt sess, uint16_t proto, 
 	else
 		session[sess].last_packet = time_now;
 
-	tunnelsend(buf, len, t); // send it...
+	tunnelsend(buf, len, s, t); // send it...
 
 	return 1;
 }

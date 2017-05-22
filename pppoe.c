@@ -684,8 +684,14 @@ static void pppoe_recv_PADT(uint8_t *pack)
 
 	if (hdr->sid)
 	{
-		if ((hdr->sid < MAXSESSION) && (session[hdr->sid].tunnel == TUNNEL_ID_PPPOE))
-			sessionshutdown(hdr->sid, "Client shutdown", CDN_ADMIN_DISC, 0);
+		if ((hdr->sid < MAXSESSION) && (session[hdr->sid].tunnel == TUNNEL_ID_PPPOE)) {
+			/* ignore it if the session it set to SINK all traffic */
+			if ((session[hdr->sid].flags & SESSION_SINK)==0) {
+				sessionshutdown(hdr->sid, "Client shutdown", CDN_ADMIN_DISC, 0);
+			} else {
+				LOG(3, hdr->sid, TUNNEL_ID_PPPOE, "Discard incoming PADT (data sink)\n");
+			}
+		}
 	}
 }
 
@@ -970,7 +976,7 @@ static void pppoe_forwardto_session_rmlns(uint8_t *pack, int size, sessionidt se
 	else
 		session[sess].last_packet = time_now;
 
-	tunnelsend(pl2tp, ll2tp, t); // send it...
+	tunnelsend(pl2tp, ll2tp, s, t); // send it...
 }
 
 // Forward from l2tp to pppoe
@@ -1041,7 +1047,7 @@ void pppoe_forwardto_session_pppoe(uint8_t *pack, int size, sessionidt sess, uin
 	else
 		session[sess].last_packet = time_now;
 
-	tunnelsend(p, lpppoe, t); // send it....
+	tunnelsend(p, lpppoe, s, t); // send it....
 }
 
 void process_pppoe_sess(uint8_t *pack, int size)
@@ -1105,6 +1111,12 @@ void process_pppoe_sess(uint8_t *pack, int size)
 		proto = ntohs(*(uint16_t *) pppdata);
 		pppdata += 2;
 		lppp -= 2;
+	}
+
+	/* ignore it if the session it set to SINK all traffic */
+	if (session[sid].flags & SESSION_SINK) {
+		LOG(3, sid, t, "Discard incoming pppoe session data (data sink)\n");
+		return;
 	}
 
 	if (session[sid].forwardtosession)

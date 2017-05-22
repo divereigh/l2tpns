@@ -241,6 +241,7 @@ struct cli_session_actions {
 #define CLI_SESS_NOTHROTTLE	0x10
 #define CLI_SESS_FILTER		0x20
 #define CLI_SESS_NOFILTER	0x40
+#define CLI_SESS_SINK		0x80
 
 struct cli_tunnel_actions {
 	char action;
@@ -453,6 +454,7 @@ typedef struct
 #define SESSION_PFC	(1 << 0)	// use Protocol-Field-Compression
 #define SESSION_ACFC	(1 << 1)	// use Address-and-Control-Field-Compression
 #define SESSION_STARTED	(1 << 2)	// RADIUS Start record sent
+#define SESSION_SINK	(1 << 3)	// Absorb all data in and out of a session (testing)
 
 // 328 bytes per tunnel
 typedef struct
@@ -974,7 +976,7 @@ void sessionkill(sessionidt s, char *reason);
 void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_error, int term_cause);
 void filter_session(sessionidt s, int filter_in, int filter_out);
 void send_garp(in_addr_t ip);
-void tunnelsend(uint8_t *buf, uint16_t l, tunnelidt t);
+void tunnelsend(uint8_t *buf, uint16_t l, sessionidt s, tunnelidt t);
 int tun_write(uint8_t *data, int size);
 void adjust_tcp_mss(sessionidt s, tunnelidt t, uint8_t *buf, int len, uint8_t *tcp);
 void sendipcp(sessionidt s, tunnelidt t);

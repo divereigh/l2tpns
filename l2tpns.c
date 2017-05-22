@@ -2147,6 +2147,7 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 			if (i == s) continue;
 			if (session[s].ip == session[i].ip)
 			{
+				LOG(3, s, session[s].tunnel, "Alternate session found - swapping to session %d\n",s);
 				// Don't delete routes
 				del_routes=0;
 				// remap to the other session

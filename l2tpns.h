@@ -362,6 +362,7 @@ sessiont;
 typedef struct
 {
         int state;                              // current state (bundlestate enum)
+	int lite;				// Is this a "lite" bundle - no MPPP
         uint32_t seq_num_t;                     // Sequence Number (transmission)
         uint32_t timeout;                       // Session-Timeout for bundle
 	uint32_t max_seq;			// Max value of sequence number field

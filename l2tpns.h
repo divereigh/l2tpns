@@ -719,6 +719,7 @@ typedef struct
 	int		radius_authtypes;
 	int		radius_authprefer;
 
+	int		allow_duplicate_ip;		// allow multiple duplicate IP addresses
 	int		allow_duplicate_users;		// allow multiple logins with the same username
 	int		kill_timedout_sessions;		// kill authenticated sessions with "session_timeout == 0"
 

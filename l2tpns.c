@@ -147,6 +147,7 @@ config_descriptt config_values[] = {
 	CONFIG("radius_dae_port", radius_dae_port, SHORT),
 	CONFIG("radius_bind_min", radius_bind_min, SHORT),
 	CONFIG("radius_bind_max", radius_bind_max, SHORT),
+	CONFIG("allow_duplicate_ip", allow_duplicate_ip, BOOL),
 	CONFIG("allow_duplicate_users", allow_duplicate_users, BOOL),
 	CONFIG("kill_timedout_sessions", kill_timedout_sessions, BOOL),
 	CONFIG("guest_account", guest_user, STRING),
@@ -2102,6 +2103,7 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 	bundleidt b = session[s].bundle;
 	//delete routes only for last session in bundle (in case of MPPP)
 	int del_routes = !b || (bundle[b].num_of_links == 1);
+	sessionidt i;
 
 	CSTAT(sessionshutdown);
 
@@ -2147,6 +2149,21 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 	{                          // IP allocated, clear and unroute
 		int r;
 		int routed = 0;
+
+		/* Look for another session with the same IP (if allow_duplicate_ip is set) */
+		for (i = 1; i <= config->cluster_highest_sessionid; i++)
+		{
+			if (i == s) continue;
+			if (session[s].ip == session[i].ip)
+			{
+				LOG(3, s, session[s].tunnel, "Alternate session found - swapping to session %d\n",s);
+				// Don't delete routes
+				del_routes=0;
+				// remap to the other session
+				cache_ipmap(session[i].ip, i);
+			}
+		}
+
 		for (r = 0; r < MAXROUTE && session[s].route[r].ip; r++)
 		{
 			if ((session[s].ip >> (32-session[s].route[r].prefixlen)) ==
@@ -5858,6 +5875,7 @@ int sessionsetup(sessionidt s, tunnelidt t)
 			// Allow duplicate sessions for multilink ones of the same bundle.
 			if (session[s].bundle && session[i].bundle && session[s].bundle == session[i].bundle) continue;
 
+			if (config->allow_duplicate_ip) continue;
 			if (ip == session[i].ip)
 			{
 				sessionshutdown(i, "Duplicate IP address", CDN_ADMIN_DISC, TERM_ADMIN_RESET);  // close radius/routes, etc.

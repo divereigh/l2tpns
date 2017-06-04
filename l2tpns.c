@@ -2140,18 +2140,37 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 	{                          // IP allocated, clear and unroute
 		int r;
 		int routed = 0;
+		sessionidt new_s;
 
 		/* Look for another session with the same IP (if allow_duplicate_ip is set) */
-		for (i = 1; i <= config->cluster_highest_sessionid; i++)
+		for (new_s = 1; new_s <= config->cluster_highest_sessionid; new_s++)
 		{
-			if (i == s) continue;
-			if (session[s].ip == session[i].ip)
+			if (new_s == s) continue;
+			if (session[s].ip == session[new_s].ip) // Match
 			{
-				LOG(3, s, session[s].tunnel, "Alternate session found - swapping to session %d\n",s);
+				LOG(3, s, session[s].tunnel, "Alternate session found - swapping to session %d\n",new_s);
 				// Don't delete routes
 				del_routes=0;
+
+				routed = 0;
+				// Add the route for this session.
+				for (r = 0; r < MAXROUTE && session[new_s].route[r].ip; r++)
+				{
+					int i, prefixlen;
+					in_addr_t ip;
+
+					prefixlen = session[new_s].route[r].prefixlen;
+					ip = session[new_s].route[r].ip;
+
+					if (!prefixlen) prefixlen = 32;
+					ip &= 0xffffffff << (32 - prefixlen);	// Force the ip to be the first one in the route.
+
+					for (i = ip; i < ip+(1<<(32-prefixlen)) ; ++i)
+						cache_ipmap(i, new_s);
+				}
 				// remap to the other session
-				cache_ipmap(session[i].ip, i);
+				cache_ipmap(session[new_s].ip, new_s);
+				break; // Only need to transfer everything to the first one
 			}
 		}
 

@@ -2100,9 +2100,6 @@ find_frame:
 				if (this_fragmentation->fragment[begin_index].flags & MP_BEGIN)
 				{
 					int isfoundE = 0;
-					// Note the sid of the beginning fragment
-					int beginSid=this_fragmentation->fragment[begin_index].sid;
-
 					// Adjust the new start sequence and start index
 					this_fragmentation->start_index = begin_index;
 					this_fragmentation->start_seq = b_seq;
@@ -2119,13 +2116,6 @@ find_frame:
 									// The End sequence was found and the frame is complete
 									isfoundE = 1;
 									break;
-								}
-								// Check if this fragment session matches the beginning session
-								if (this_bundle->split_packets==0 && beginSid!=this_fragmentation->fragment[end_index].sid) {
-									// No - must be splitting packets - we should do the same
-									this_bundle->split_packets=1;
-									LOG(3, this_fragmentation->fragment[end_index].sid, this_fragmentation->fragment[end_index].tid,
-										"MPPP: Turning split packets on\n");
 								}
 							}
 							else

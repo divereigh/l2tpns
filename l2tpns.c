@@ -1661,9 +1661,7 @@ void processipout(uint8_t *buf, int len)
 				remain -= fraglen;
 				while (remain > last_fraglen)
 				{
-					if (b->split_packets) {
-						b->current_ses = (b->current_ses + 1) % num_of_links;
-					}
+					b->current_ses = (b->current_ses + 1) % num_of_links;
 					s = members[b->current_ses];
 					t = session[s].tunnel;
 					sp = &session[s];
@@ -1675,9 +1673,7 @@ void processipout(uint8_t *buf, int len)
 					remain -= fraglen;
 				}
 				// send the last fragment
-				if (b->split_packets) {
-					b->current_ses = (b->current_ses + 1) % num_of_links;
-				}
+				b->current_ses = (b->current_ses + 1) % num_of_links;
 				s = members[b->current_ses];
 				t = session[s].tunnel;
 				sp = &session[s];

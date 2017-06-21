@@ -620,6 +620,7 @@ static int cmd_show_bundle(struct cli_def *cli, const char *command, char **argv
 				continue;
 			}
 			cli_print(cli, "\r\nBundle %d:", b);
+			cli_print(cli, "\tLite:\t\t%s", bundle[b].lite ? "Yes" : "No");
 			cli_print(cli, "\tUser:\t\t%s", bundle[b].user[0] ? bundle[b].user : "none");
 			cli_print(cli, "\tLink count:\t%d", bundle[b].num_of_links);
 			cli_print(cli, "\tIP address:\t%s", fmtaddr(htonl(session[bundle[b].members[0]].ip), 0));
@@ -678,8 +679,9 @@ static int cmd_show_bundle(struct cli_def *cli, const char *command, char **argv
 	}
 
 	// Show Summary
-	cli_print(cli, "%4s %-32s %-15s %s",
+	cli_print(cli, "%4s %-4s %-32s %-15s %s",
 			"BID",
+			"Lite",
 			"Username",
 			"IP",
 			"Count");
@@ -689,8 +691,9 @@ static int cmd_show_bundle(struct cli_def *cli, const char *command, char **argv
 		if (bundle[i].state!=BUNDLEOPEN)
 			continue;
 
-		cli_print(cli, "%4d %-32s %-15s %d",
+		cli_print(cli, "%4d %-4s %-32s %-15s %d",
 				i,
+				bundle[i].lite ? "Yes" : "No",
 				bundle[i].user[0] ? bundle[i].user : "*",
 				fmtaddr(htonl(session[bundle[i].members[0]].ip), 0),
 				bundle[i].num_of_links);

@@ -1636,7 +1636,7 @@ void processipout(uint8_t *buf, int len)
 		sp = &session[s];
 		LOG(4, s, t, "MPPP: (1)Session number becomes: %d\n", s);
 
-		if (num_of_links > 1)
+		if (num_of_links > 1 && !b->lite)
 		{
 			if(len > MINFRAGLEN)
 			{
@@ -5858,10 +5858,19 @@ int sessionsetup(sessionidt s, tunnelidt t)
 			// Allow duplicate sessions for multilink ones of the same bundle.
 			if (session[s].bundle && session[i].bundle && session[s].bundle == session[i].bundle) continue;
 
-			if (config->allow_duplicate_ip) continue;
 			if (ip == session[i].ip)
 			{
-				sessionshutdown(i, "Duplicate IP address", CDN_ADMIN_DISC, TERM_ADMIN_RESET);  // close radius/routes, etc.
+				if (config->allow_duplicate_ip)
+				{
+					if (session[i].bundle==0)
+					{
+						// Put the original session into a bundle
+						join_bundle_lite(i);
+					}
+					join_bundle_lite(s);
+				} else {
+					sessionshutdown(i, "Duplicate IP address", CDN_ADMIN_DISC, TERM_ADMIN_RESET);  // close radius/routes, etc.
+				}
 				continue;
 			}
 

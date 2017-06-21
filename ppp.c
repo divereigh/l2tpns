@@ -1117,6 +1117,62 @@ void processlcp(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	}
 }
 
+/* Create a "lite" bundle - were the sessions are not a full multilink, but
+** are instead simple sessions with the same IP address where the traffic is
+** round-robined between the sessions. This only works when the client router
+** happy to receive data down either connection
+*/
+int join_bundle_lite(sessionidt s)
+{
+	// Search for a bundle to join
+	bundleidt i;
+	bundleidt b;
+
+	if (!session[s].opened || session[s].die)
+	{
+		LOG(3, s, session[s].tunnel, "Called join_bundle on an unopened/shutdown session.\n");
+		session[s].ip=0;	    // Make sure that any further shutdown does kill routes etc
+		return 0;                   // not a live session
+	}
+
+	for (i = 1; i < MAXBUNDLE; i++)
+	{
+		if (bundle[i].state != BUNDLEFREE)
+		{
+			sessionidt first_ses = bundle[i].members[0];
+			/* Look for a bundle with the same IP & username */
+			if (session[s].ip==session[first_ses].ip && !strcmp(session[s].user, bundle[i].user) && bundle[i].lite)
+			{
+				session[s].bundle = i;
+				session[s].dns1 = session[first_ses].dns1;
+				session[s].dns2 = session[first_ses].dns2;
+				session[s].timeout = session[first_ses].timeout;
+
+				// strcpy(bundle[i].user, session[s].user);
+				bundle[i].members[bundle[i].num_of_links] = s;
+				bundle[i].num_of_links++;
+				LOG(3, s, session[s].tunnel, "MPPP: Bundling additional line in bundle lite (%d), lines:%d\n",i,bundle[i].num_of_links);
+				return i;
+			}
+		}
+	}
+
+	// No previously created bundle was found for this session, so create a new one
+	if (!(b = new_bundle())) return -1;
+
+	session[s].bundle = b;
+	bundle[b].mrru = 0;
+	bundle[b].mssf = 0;
+	bundle[b].max_seq = 0;
+	bundle[b].lite = 1;
+
+	strcpy(bundle[b].user, session[s].user);
+	bundle[b].members[0] = s;
+	bundle[b].timeout = session[s].timeout;
+	LOG(3, s, session[s].tunnel, "MPPP: Created a new bundle lite (%d)\n", b);
+	return b;
+}
+
 int join_bundle(sessionidt s)
 {
 	// Search for a bundle to join
@@ -1134,7 +1190,7 @@ int join_bundle(sessionidt s)
 	{
 		if (bundle[i].state != BUNDLEFREE)
 		{
-			if (epdiscmp(session[s].epdis,bundle[i].epdis) && !strcmp(session[s].user, bundle[i].user))
+			if (epdiscmp(session[s].epdis,bundle[i].epdis) && !strcmp(session[s].user, bundle[i].user) && !bundle[i].lite)
 			{
 				sessionidt first_ses = bundle[i].members[0];
 				if (bundle[i].mssf != session[s].mssf)

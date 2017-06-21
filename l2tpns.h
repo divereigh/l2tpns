@@ -951,6 +951,7 @@ void send_ipin(sessionidt s, uint8_t *buf, int len);
 void sendccp(sessionidt s, tunnelidt t);
 void protoreject(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l, uint16_t proto);
 int join_bundle(sessionidt s);
+int join_bundle_lite(sessionidt s);
 
 
 // radius.c

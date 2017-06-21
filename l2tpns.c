@@ -2094,7 +2094,6 @@ void sessionshutdown(sessionidt s, char const *reason, int cdn_result, int cdn_e
 	bundleidt b = session[s].bundle;
 	//delete routes only for last session in bundle (in case of MPPP)
 	int del_routes = !b || (bundle[b].num_of_links == 1);
-	sessionidt i;
 
 	CSTAT(sessionshutdown);
 

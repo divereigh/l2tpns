@@ -5512,7 +5512,7 @@ static void update_config()
 		setbuf(log_stream, NULL);
 	}
 
-#define L2TP_HDRS		(20+8+6+4)	// L2TP data encaptulation: ip + udp + l2tp (data) + ppp (inc hdlc)
+#define L2TP_HDRS		(20+8+8+4)	// L2TP data encaptulation: ip + udp + l2tp (data) + ppp (inc hdlc)
 #define TCP_HDRS		(20+20)		// TCP encapsulation: ip + tcp
 
 	if (config->l2tp_mtu <= 0)		config->l2tp_mtu = 1500; // ethernet default

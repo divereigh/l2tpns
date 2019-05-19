@@ -2772,7 +2772,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 				uint8_t flags = *p;
 				uint16_t mtype;
 
-				if (n > l)
+				if (n > l || n < 6)
 				{
 					LOG(1, s, t, "Invalid length in AVP\n");
 					STAT(tunnel_rx_errors);
@@ -2792,7 +2792,7 @@ void processudp(uint8_t *buf, int len, struct sockaddr_in *addr, uint16_t indexu
 				b += 2;
 				if (*(uint16_t *) (b))
 				{
-					LOG(2, s, t, "Unknown AVP vendor %u\n", ntohs(*(uint16_t *) (b)));
+					LOG(2, s, t, "Non-zero AVP vendor ID %u\n", ntohs(*(uint16_t *) (b)));
 					fatal = flags;
 					result = 2; // general error
 					error = 6; // generic vendor-specific error

@@ -141,6 +141,12 @@ void processpap(sessionidt s, tunnelidt t, uint8_t *p, uint16_t l)
 	}
 	else
 	{
+		// Check we aren't already in CHAP mode
+		if (radius[r].chap == 1) {            // CHAP not PAP
+			LOG(3, s, t, "Already in CHAP - ignoring PAP request\n");
+			return;
+		}
+
 		// Run PRE_AUTH plugins
 		struct param_pre_auth packet = { &tunnel[t], &session[s], strdup(user), strdup(pass), PPPPAP, 1 };
 		run_plugins(PLUGIN_PRE_AUTH, &packet);
